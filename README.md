@@ -54,7 +54,7 @@ and movement or mining tools can't run.
 
 Every response reports a `source` (`static`, `synced`, `integrated_server`, `client`).
 
-## Tools (51)
+## Tools (53)
 
 **Player:** `player_status`, `player_inventory`
 **World:** `world_info`, `look_target`, `block_at`, `blocks_at`, `scan_area`, `find_blocks`, `nearby_entities`, `entity_info`, `players_online`, `open_container`, `hud`
@@ -62,6 +62,7 @@ Every response reports a `source` (`static`, `synced`, `integrated_server`, `cli
 **Recipes:** `recipe_types`, `recipes_search`, `recipe_get`, `craft_plan`, `craftable_now`
 **Info:** `mods_list`, `item_tooltip`, `advancements`, `statistics`, `chat_history`, `events_since`, `wait_for_event`, `push_settings`, `screenshot`, `export_data`
 **Singleplayer server data:** `loot_table`, `structure_info`, `locate_structure`, `locate_biome`
+**Fishing:** `fishing_status`, `fish` (casts, waits for a bite and reels in; bites and catches are also `fish_bite` / `fish_caught` events)
 **Actions:** `send_chat`, `run_command`, `look_at`, `select_slot`, `interact`, `mine_block`, `move`, `container_click`, `open_inventory`, `close_screen`, `highlight`, `clear_highlights`, `notify_player`
 
 List tools share the same filters (`namespace`, `query`, which matches the id or the display name, and `regex`) and paging (`page_size`, `cursor` → `next_cursor`).

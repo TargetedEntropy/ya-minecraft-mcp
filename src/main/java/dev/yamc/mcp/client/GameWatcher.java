@@ -72,7 +72,14 @@ public final class GameWatcher {
                     (from, to, p) -> emit(GameEvent.GAMEMODE_CHANGE, "from", from.getName(), "to", to.getName())),
             Watch.of(20, p -> p.level().getBiome(p.blockPosition()).getRegisteredName(), (from, to, p) -> emit(GameEvent.BIOME_CHANGE, "from", from, "to", to)),
             Watch.of(5, GameWatcher::effects, GameWatcher::effectsChanged),
-            Watch.of(10, p -> Inventories.counts(p.getInventory(), true), GameWatcher::inventoryChanged));
+            Watch.of(10, p -> Inventories.counts(p.getInventory(), true), this::inventoryChanged),
+            Watch.of(1, GameWatcher::fishing, this::fishingChanged));
+
+    /** Fishing line state as seen by the client: none, cast, or biting. */
+    private enum Line { NONE, CAST, BITING }
+
+    /** Items gained up to this tick count as the catch of a line reeled in while a fish was biting. */
+    private int catchUntilTick = -1;
 
     private int tick;
     private final Map<Long, Long> recentChat = new HashMap<>();
@@ -92,6 +99,7 @@ public final class GameWatcher {
 
     private void resetWatches() {
         watches.forEach(Watch::reset);
+        catchUntilTick = -1;
     }
 
     private static void emit(GameEvent type, String k1, String v1, String k2, String v2) {
@@ -144,7 +152,17 @@ public final class GameWatcher {
         EventLog.add(type, d);
     }
 
-    private static void inventoryChanged(Map<Item, Integer> before, Map<Item, Integer> inv, LocalPlayer p) {
+    private static Line fishing(LocalPlayer p) {
+        if (p.fishing == null || p.fishing.isRemoved()) return Line.NONE;
+        return p.fishing.biting ? Line.BITING : Line.CAST;
+    }
+
+    private void fishingChanged(Line before, Line now, LocalPlayer p) {
+        if (now == Line.BITING) EventLog.add(GameEvent.FISH_BITE, new JsonObject());
+        if (before == Line.BITING && now == Line.NONE) catchUntilTick = tick + 60; // reeled in on a bite: the catch flies to the player
+    }
+
+    private void inventoryChanged(Map<Item, Integer> before, Map<Item, Integer> inv, LocalPlayer p) {
         Set<Item> keys = new HashSet<>(inv.keySet());
         keys.addAll(before.keySet());
         for (Item it : keys) {
@@ -155,6 +173,12 @@ public final class GameWatcher {
             d.addProperty("delta", delta);
             d.addProperty("now", inv.getOrDefault(it, 0));
             EventLog.add(delta > 0 ? GameEvent.ITEM_GAINED : GameEvent.ITEM_LOST, d);
+            if (delta > 0 && tick <= catchUntilTick) {
+                JsonObject c = new JsonObject();
+                c.addProperty("item", BuiltInRegistries.ITEM.getKey(it).toString());
+                c.addProperty("count", delta);
+                EventLog.add(GameEvent.FISH_CAUGHT, c);
+            }
         }
     }
 

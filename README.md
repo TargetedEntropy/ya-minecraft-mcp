@@ -86,6 +86,14 @@ List tools share the same filters (`namespace`, `query`, which matches the id or
 - `./gradlew runTestClient`: client in `run-test/` that auto-creates and joins a singleplayer world named `mcptest`
   (`-Dyamcmcp.devAutoWorld`). Headless: `xvfb-run -a ./gradlew runTestClient`.
 
+## Publishing to CurseForge
+
+`scripts/publish-curseforge.sh [--type release|beta|alpha] [--changelog notes.md] [--dry-run]` builds the jar and uploads it,
+tagged Minecraft 1.21.1 / NeoForge / Client / Java 21.
+
+- Token: from `CURSEFORGE_TOKEN`, or from a file containing `TOKEN=...` (default `~/.config/curseforge.cred`).
+- Project id: from `CURSEFORGE_PROJECT_ID`, or `curseforge_project_id` in `gradle.properties`.
+
 ## License
 
 MIT, see [LICENSE](LICENSE).

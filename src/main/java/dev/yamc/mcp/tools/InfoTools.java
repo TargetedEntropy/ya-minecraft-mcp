@@ -189,7 +189,7 @@ final class InfoTools {
                     o.add("types", dev.yamc.mcp.util.Json.strings(dev.yamc.mcp.client.PushPolicy.types()));
                     o.addProperty("connected_streams", dev.yamc.mcp.mcp.SseHub.openStreams());
                     if (dev.yamc.mcp.mcp.SseHub.openStreams() == 0)
-                        o.addProperty("note", "No client is listening for pushes. In Claude Code, connect through the stdio bridge as a channel (see README / /yamcmcp connect channel).");
+                        o.addProperty("note", "No client is listening for pushes. In Claude Code, connect through the stdio bridge as a channel (see README / /yamc connect channel).");
                     return ToolResult.json(o);
                 }));
 

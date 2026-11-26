@@ -108,7 +108,7 @@ public final class YamcMcp {
     }
 
     private static void registerCommands(RegisterClientCommandsEvent e) {
-        e.getDispatcher().register(Commands.literal("yamcmcp")
+        e.getDispatcher().register(Commands.literal("yamc")
                 .executes(c -> status())
                 .then(Commands.literal("status").executes(c -> status()))
                 .then(Commands.literal("connect").then(Commands.literal("channel").executes(c -> {

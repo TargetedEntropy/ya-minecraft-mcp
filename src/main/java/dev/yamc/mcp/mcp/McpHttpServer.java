@@ -85,7 +85,7 @@ public final class McpHttpServer {
             }
             if (token != null && !authorized(ex.getRequestHeaders().getFirst("Authorization"))) {
                 ex.getResponseHeaders().add("WWW-Authenticate", "Bearer realm=\"yamc-mcp\"");
-                send(ex, 401, "{\"error\":\"Missing or invalid bearer token. Run /yamcmcp connect in game to copy the setup command.\"}");
+                send(ex, 401, "{\"error\":\"Missing or invalid bearer token. Run /yamc connect in game to copy the setup command.\"}");
                 return;
             }
             switch (ex.getRequestMethod()) {

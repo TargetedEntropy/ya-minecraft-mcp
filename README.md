@@ -8,12 +8,12 @@ recipes (modded too) and more. They can also act in game. Servers do not need th
 
 1. Build (Java 21): `git clone https://github.com/TargetedEntropy/ya-minecraft-mcp && cd ya-minecraft-mcp && ./gradlew build` → `build/libs/yamcmcp-<version>.jar`, then drop it into your NeoForge 1.21.1 `mods/` folder.
 2. Launch the game. The server listens on `http://127.0.0.1:25599/mcp`.
-3. In game, run `/yamcmcp connect`. It copies the setup command to your clipboard:
+3. In game, run `/yamc connect`. It copies the setup command to your clipboard:
    ```
    claude mcp add --transport http minecraft http://127.0.0.1:25599/mcp --header "Authorization: Bearer <token>"
    ```
    The same command is written to `config/yamcmcp-connect.txt`, and the token is in `config/yamcmcp-token.txt`.
-4. `/yamcmcp status` shows the request count and the last connected client.
+4. `/yamc status` shows the request count and the last connected client.
 
 ### Push notifications (Claude Code channels)
 
@@ -27,7 +27,7 @@ claude mcp add minecraft -- java -cp "/path/to/mods/yamcmcp-<version>.jar" dev.y
 claude --dangerously-load-development-channels server:minecraft
 ```
 
-`/yamcmcp connect channel` copies this command with the real paths filled in. It's also written to `config/yamcmcp-connect.txt`.
+`/yamc connect channel` copies this command with the real paths filled in. It's also written to `config/yamcmcp-connect.txt`.
 
 - The bridge uses only the JDK, so the Java 21 that runs Minecraft works. Start the game before Claude Code; if the game
   restarts, the bridge reconnects the event stream automatically.

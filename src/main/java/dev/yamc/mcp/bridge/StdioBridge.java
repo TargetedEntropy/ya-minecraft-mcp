@@ -116,7 +116,7 @@ public final class StdioBridge {
             int code = resp.statusCode();
             if (code == 202 || resp.body().isEmpty()) return;
             if (code == 401) {
-                if (isRequest) emit(error(id, "Unauthorized: wrong or missing token (see config/yamcmcp-token.txt; run /yamcmcp connect in game)."));
+                if (isRequest) emit(error(id, "Unauthorized: wrong or missing token (see config/yamcmcp-token.txt; run /yamc connect in game)."));
                 return;
             }
             String body = resp.body();

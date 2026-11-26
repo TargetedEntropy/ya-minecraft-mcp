@@ -1,5 +1,6 @@
 package dev.yamc.mcp.tools;
 
+import dev.yamc.mcp.util.Mc;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import dev.yamc.mcp.json.Stacks;
@@ -89,12 +90,12 @@ final class ScreenTools {
         }
         if (menu instanceof EnchantmentMenu em) {
             JsonArray opts = new JsonArray();
-            var reg = p.registryAccess().registryOrThrow(Registries.ENCHANTMENT);
+            var reg = Mc.registryOrThrow(p.registryAccess(), Registries.ENCHANTMENT);
             for (int i = 0; i < 3; i++) {
                 JsonObject x = new JsonObject();
                 x.addProperty("level_cost", em.costs[i]);
                 if (em.enchantClue[i] >= 0) {
-                    reg.getHolder(em.enchantClue[i]).ifPresent(h -> x.addProperty("clue", h.getRegisteredName()));
+                    Mc.holder(reg, em.enchantClue[i]).ifPresent(h -> x.addProperty("clue", h.getRegisteredName()));
                     x.addProperty("clue_level", em.levelClue[i]);
                 }
                 opts.add(x);

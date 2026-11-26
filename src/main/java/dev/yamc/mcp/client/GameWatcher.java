@@ -1,5 +1,6 @@
 package dev.yamc.mcp.client;
 
+import dev.yamc.mcp.util.Mc;
 import com.google.gson.JsonObject;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.DeathScreen;
@@ -72,7 +73,7 @@ final class GameWatcher {
             Watch.of(1, LocalPlayer::isDeadOrDying, (was, dead, p) -> {
                 if (dead) death(p);
             }),
-            Watch.of(1, p -> p.level().dimension().location().toString(), (from, to, p) -> emit(GameEvent.DIMENSION_CHANGE, "from", from, "to", to)),
+            Watch.of(1, p -> Mc.id(p.level().dimension()).toString(), (from, to, p) -> emit(GameEvent.DIMENSION_CHANGE, "from", from, "to", to)),
             Watch.of(1, p -> p.experienceLevel, (from, to, p) -> {
                 if (to > from) {
                     JsonObject d = new JsonObject();
@@ -132,7 +133,7 @@ final class GameWatcher {
     private static void death(LocalPlayer p) {
         JsonObject d = new JsonObject();
         d.add("pos", Json.pos(p.blockPosition()));
-        d.addProperty("dimension", p.level().dimension().location().toString());
+        d.addProperty("dimension", Mc.id(p.level().dimension()).toString());
         EventLog.add(GameEvent.DEATH, d);
     }
 
@@ -181,7 +182,7 @@ final class GameWatcher {
         } else if (sender != null && !Objects.equals(sender, net.minecraft.Util.NIL_UUID)) {
             d.addProperty("sender_uuid", sender.toString());
             var info = Minecraft.getInstance().getConnection() == null ? null : Minecraft.getInstance().getConnection().getPlayerInfo(sender);
-            if (info != null) d.addProperty("sender", info.getProfile().getName());
+            if (info != null) d.addProperty("sender", Mc.name(info.getProfile()));
         }
         if (type == GameEvent.ACTIONBAR) {
             long key = text.hashCode();

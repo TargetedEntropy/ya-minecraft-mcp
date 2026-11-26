@@ -15,6 +15,8 @@ val javaVersion = if (sc.current.parsed >= "26.1") 25 else 21
 
 neoForge {
     version = sc.properties["deps.neo_loader"]
+    // Nodes other than the active one build from Stonecutter's generated copy, so point at the processed file.
+    accessTransformers.from(sc.process(rootProject.file("src/main/resources/META-INF/accesstransformer.cfg"), "build/processed-at.cfg"))
 
     mods {
         register(modId) {

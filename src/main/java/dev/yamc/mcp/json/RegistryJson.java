@@ -1,5 +1,6 @@
 package dev.yamc.mcp.json;
 
+import dev.yamc.mcp.util.Mc;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.mojang.serialization.Codec;
@@ -19,6 +20,7 @@ import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.RangedAttribute;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.alchemy.Potion;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
@@ -40,9 +42,9 @@ public final class RegistryJson {
     public static <T> JsonObject entry(Registry<T> reg, Holder.Reference<T> h, HolderLookup.Provider access,
                                        boolean name, boolean tags, boolean data) {
         JsonObject o = new JsonObject();
-        o.addProperty("id", h.key().location().toString());
+        o.addProperty("id", Mc.id(h.key()).toString());
         if (name) {
-            String n = Names.of(reg.key(), h.key().location(), h.value());
+            String n = Names.of(reg.key(), Mc.id(h.key()), h.value());
             if (n != null) o.addProperty("name", n);
         }
         if (tags) o.add("tags", tags(h));
@@ -64,7 +66,7 @@ public final class RegistryJson {
             if (b.getSpeedFactor() != 1f) d.addProperty("speed_factor", b.getSpeedFactor());
             if (b.getJumpFactor() != 1f) d.addProperty("jump_factor", b.getJumpFactor());
             d.addProperty("item", BuiltInRegistries.ITEM.getKey(b.asItem()).toString());
-            d.addProperty("loot_table", b.getLootTable().location().toString());
+            if (Mc.lootTable(b) != null) d.addProperty("loot_table", Mc.lootTable(b).toString());
             d.addProperty("state_count", b.getStateDefinition().getPossibleStates().size());
             JsonObject props = new JsonObject();
             for (Property<?> p : b.getStateDefinition().getProperties()) props.add(p.getName(), BlockJson.possibleValues(p));
@@ -76,8 +78,8 @@ public final class RegistryJson {
         if (v instanceof Item i) {
             d.addProperty("max_stack", i.getDefaultMaxStackSize());
             if (i instanceof BlockItem bi) d.addProperty("block", BuiltInRegistries.BLOCK.getKey(bi.getBlock()).toString());
-            Item rem = i.getCraftingRemainingItem();
-            if (rem != null) d.addProperty("crafting_remainder", BuiltInRegistries.ITEM.getKey(rem).toString());
+            ItemStack rem = Mc.craftingRemainder(i);
+            if (!rem.isEmpty()) d.addProperty("crafting_remainder", BuiltInRegistries.ITEM.getKey(rem.getItem()).toString());
             d.add("default_components", Json.encode(DataComponentMap.CODEC, i.components(), access));
             return d;
         }
@@ -88,7 +90,7 @@ public final class RegistryJson {
             d.addProperty("fire_immune", e.fireImmune());
             d.addProperty("summonable", e.canSummon());
             d.addProperty("tracking_range_chunks", e.clientTrackingRange());
-            d.addProperty("loot_table", e.getDefaultLootTable().location().toString());
+            if (Mc.lootTable(e) != null) d.addProperty("loot_table", Mc.lootTable(e).toString());
             return d;
         }
         if (v instanceof MobEffect m) {
@@ -124,7 +126,7 @@ public final class RegistryJson {
             return d;
         }
         if (v instanceof SoundEvent se) {
-            d.addProperty("location", se.getLocation().toString());
+            d.addProperty("location", Mc.soundId(se).toString());
             return d;
         }
         return null;

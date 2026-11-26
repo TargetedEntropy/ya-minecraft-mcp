@@ -32,6 +32,9 @@ final class DevAutoWorld {
                 mc.createWorldOpenFlows().openWorld(name, () -> mc.setScreen(new TitleScreen()));
             } else {
                 LevelSettings settings = new LevelSettings(name, GameType.SURVIVAL, false, Difficulty.NORMAL, true,
+                        //? if >=1.21.2 {
+                        /*new GameRules(WorldDataConfiguration.DEFAULT.enabledFeatures()), WorldDataConfiguration.DEFAULT);
+                        *///?} else
                         new GameRules(), WorldDataConfiguration.DEFAULT);
                 mc.createWorldOpenFlows().createFreshLevel(name, settings, new WorldOptions(Long.getLong("yamcmcp.devSeed", 12345L), true, false),
                         WorldPresets::createNormalWorldDimensions, new TitleScreen());

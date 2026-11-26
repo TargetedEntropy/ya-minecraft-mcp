@@ -1,5 +1,6 @@
 package dev.yamc.mcp.tools;
 
+import dev.yamc.mcp.util.Mc;
 import com.google.gson.JsonObject;
 import dev.yamc.mcp.json.BlockJson;
 import dev.yamc.mcp.json.EntityJson;
@@ -51,11 +52,11 @@ final class WorldTools {
                     var c = Ctx.mc().getConnection();
                     if (c == null) throw new ToolException("Not connected to a world.");
                     List<PlayerInfo> list = new ArrayList<>(c.getOnlinePlayers());
-                    list.sort(Comparator.comparing(i -> i.getProfile().getName(), String.CASE_INSENSITIVE_ORDER));
+                    list.sort(Comparator.comparing(i -> Mc.name(i.getProfile()), String.CASE_INSENSITIVE_ORDER));
                     return ToolResult.json(Paging.page(list, a, i -> {
                         JsonObject o = new JsonObject();
-                        o.addProperty("name", i.getProfile().getName());
-                        o.addProperty("uuid", i.getProfile().getId().toString());
+                        o.addProperty("name", Mc.name(i.getProfile()));
+                        o.addProperty("uuid", Mc.id(i.getProfile()).toString());
                         o.addProperty("ping_ms", i.getLatency());
                         if (i.getGameMode() != null) o.addProperty("gamemode", i.getGameMode().getName());
                         if (i.getTabListDisplayName() != null) o.addProperty("display_name", i.getTabListDisplayName().getString());
@@ -69,7 +70,7 @@ final class WorldTools {
         ClientLevel l = Ctx.level();
         LocalPlayer p = Ctx.player();
         JsonObject o = new JsonObject();
-        o.addProperty("dimension", l.dimension().location().toString());
+        o.addProperty("dimension", Mc.id(l.dimension()).toString());
         o.addProperty("dimension_type", l.dimensionTypeRegistration().getRegisteredName());
         long dayTime = l.getDayTime();
         o.addProperty("day", dayTime / 24000L);
@@ -77,14 +78,14 @@ final class WorldTools {
         o.addProperty("game_time", l.getGameTime());
         long t = (dayTime + 6000) % 24000;
         o.addProperty("clock", String.format("%02d:%02d", t / 1000, (t % 1000) * 60 / 1000));
-        o.addProperty("is_day", l.isDay());
+        o.addProperty("is_day", Mc.isDay(l));
         o.addProperty("raining", l.isRaining());
         o.addProperty("thundering", l.isThundering());
-        o.addProperty("moon_phase", l.getMoonPhase());
+        o.addProperty("moon_phase", (int) (l.getDayTime() / 24000L % 8L));
         o.addProperty("difficulty", l.getDifficulty().getKey());
         o.addProperty("hardcore", l.getLevelData().isHardcore());
-        o.addProperty("min_build_height", l.getMinBuildHeight());
-        o.addProperty("max_build_height", l.getMaxBuildHeight());
+        o.addProperty("min_build_height", Mc.minY(l));
+        o.addProperty("max_build_height", Mc.maxBuildHeight(l));
         o.addProperty("sea_level", l.getSeaLevel());
         var wb = l.getWorldBorder();
         JsonObject border = new JsonObject();

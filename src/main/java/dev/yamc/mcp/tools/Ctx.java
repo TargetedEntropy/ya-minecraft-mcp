@@ -1,5 +1,6 @@
 package dev.yamc.mcp.tools;
 
+import dev.yamc.mcp.util.Mc;
 import dev.yamc.mcp.mcp.Args;
 import dev.yamc.mcp.mcp.ToolException;
 import net.minecraft.client.Minecraft;
@@ -50,7 +51,7 @@ final class Ctx {
 
     static Item item(String id) {
         var rl = Args.parseId(id);
-        Item it = BuiltInRegistries.ITEM.get(rl);
+        Item it = Mc.value(BuiltInRegistries.ITEM, rl);
         if (it == Items.AIR && !rl.getPath().equals("air"))
             throw new ToolException("Unknown item '" + rl + "'. Use registry_entries with registry=minecraft:item to search.");
         return it;

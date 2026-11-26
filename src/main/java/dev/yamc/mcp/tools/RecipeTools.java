@@ -3,6 +3,8 @@ package dev.yamc.mcp.tools;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import dev.yamc.mcp.json.RecipeJson;
+import dev.yamc.mcp.recipe.Ing;
+import dev.yamc.mcp.recipe.RecipeView;
 import dev.yamc.mcp.json.Stacks;
 import dev.yamc.mcp.mcp.Args;
 import dev.yamc.mcp.mcp.Schema;
@@ -20,10 +22,6 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.crafting.Ingredient;
-import net.minecraft.world.item.crafting.Recipe;
-import net.minecraft.world.item.crafting.RecipeHolder;
-import net.minecraft.world.item.crafting.ShapedRecipe;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -48,8 +46,8 @@ final class RecipeTools {
                     RecipeSource s = RecipeSource.from(a);
                     IdFilter f = IdFilter.from(a);
                     Map<ResourceLocation, Integer> counts = new TreeMap<>();
-                    for (RecipeHolder<?> h : s.manager().getRecipes()) {
-                        ResourceLocation t = BuiltInRegistries.RECIPE_TYPE.getKey(h.value().getType());
+                    for (RecipeView v : s.recipes()) {
+                        ResourceLocation t = ResourceLocation.tryParse(v.type());
                         if (t != null && f.test(t, null)) counts.merge(t, 1, Integer::sum);
                     }
                     JsonArray arr = new JsonArray();
@@ -61,7 +59,7 @@ final class RecipeTools {
                     });
                     JsonObject o = new JsonObject();
                     o.addProperty("source", s.source());
-                    o.addProperty("total_recipes", s.manager().getRecipes().size());
+                    o.addProperty("total_recipes", s.recipes().size());
                     o.add("types", arr);
                     return ToolResult.json(o);
                 }));
@@ -86,8 +84,8 @@ final class RecipeTools {
                 .handler(a -> {
                     RecipeSource s = RecipeSource.from(a);
                     ResourceLocation id = a.reqId("id");
-                    RecipeHolder<?> h = s.manager().byKey(id).orElseThrow(() -> new ToolException("No recipe '" + id + "'. Use recipes_search."));
-                    JsonObject o = RecipeJson.recipe(h, s.regs(), a.bool("include_raw", true));
+                    RecipeView v = s.byId(id).orElseThrow(() -> new ToolException("No recipe '" + id + "'. Use recipes_search."));
+                    JsonObject o = RecipeJson.recipe(v, s.regs(), a.bool("include_raw", true));
                     o.addProperty("source", s.source());
                     return ToolResult.json(o);
                 }));
@@ -121,10 +119,10 @@ final class RecipeTools {
     }
 
     /** Matches recipes with an ingredient option among the given items. Built once per search: big packs have 100k+ recipes. */
-    static Predicate<Recipe<?>> consumesAny(Set<Item> items) {
+    static Predicate<RecipeView> consumesAny(Set<Item> items) {
         return r -> {
-            for (Ingredient ing : r.getIngredients())
-                for (ItemStack s : ing.getItems()) if (items.contains(s.getItem())) return true;
+            for (Ing ing : r.inputs())
+                for (Item i : ing.options()) if (items.contains(i)) return true;
             return false;
         };
     }
@@ -133,21 +131,20 @@ final class RecipeTools {
         RecipeSource s = RecipeSource.from(a);
         String type = a.has("type") ? Args.parseId(a.str("type", "")).toString() : null;
         Set<Item> out = a.has("output") ? items(a.reqStr("output")) : null;
-        Predicate<Recipe<?>> input = a.has("input") ? consumesAny(items(a.reqStr("input"))) : null;
+        Predicate<RecipeView> input = a.has("input") ? consumesAny(items(a.reqStr("input"))) : null;
         IdFilter f = IdFilter.from(a);
         boolean raw = a.bool("include_raw", false);
-        List<RecipeHolder<?>> list = new ArrayList<>();
-        for (RecipeHolder<?> h : s.manager().getRecipes()) {
-            Recipe<?> r = h.value();
-            if (type != null && !type.equals(RecipeJson.type(r))) continue;
-            ItemStack res = (out != null || f.usesName()) ? RecipeJson.result(r, s.regs()) : null;
+        List<RecipeView> list = new ArrayList<>();
+        for (RecipeView r : s.recipes()) {
+            if (type != null && !type.equals(r.type())) continue;
+            ItemStack res = r.result();
             if (out != null && (res.isEmpty() || !out.contains(res.getItem()))) continue;
             if (input != null && !input.test(r)) continue;
-            if (!f.test(h.id(), () -> res == null || res.isEmpty() ? null : res.getHoverName().getString())) continue;
-            list.add(h);
+            if (!f.test(r.id(), () -> res.isEmpty() ? null : res.getHoverName().getString())) continue;
+            list.add(r);
         }
-        list.sort(Comparator.comparing(RecipeHolder::id));
-        JsonObject o = Paging.page(list, a, h -> RecipeJson.recipe(h, s.regs(), raw), 25);
+        list.sort(Comparator.comparing(RecipeView::id));
+        JsonObject o = Paging.page(list, a, r -> RecipeJson.recipe(r, s.regs(), raw), 25);
         o.addProperty("source", s.source());
         return o;
     }
@@ -155,15 +152,14 @@ final class RecipeTools {
     // ------------------------------------------------------------------ craftable now
 
     /** Greedy check whether the ingredients can be taken from inv (mutates inv on success). */
-    static boolean take(List<Ingredient> ings, Map<Item, Integer> inv) {
+    static boolean take(List<Ing> ings, Map<Item, Integer> inv) {
         Map<Item, Integer> copy = new HashMap<>(inv);
-        List<Ingredient> sorted = new ArrayList<>();
-        for (Ingredient i : ings) if (!i.isEmpty()) sorted.add(i);
-        sorted.sort(Comparator.comparingInt(i -> i.getItems().length));
-        for (Ingredient ing : sorted) {
+        List<Ing> sorted = new ArrayList<>(ings);
+        sorted.sort(Comparator.comparingInt(i -> i.options().size()));
+        for (Ing ing : sorted) {
             Item pick = null;
             for (var e : copy.entrySet()) {
-                if (e.getValue() > 0 && ing.test(new ItemStack(e.getKey()))) {
+                if (e.getValue() > 0 && ing.accepts(e.getKey())) {
                     pick = e.getKey();
                     break;
                 }
@@ -182,29 +178,27 @@ final class RecipeTools {
         String type = Args.parseId(a.str("type", "minecraft:crafting")).toString();
         IdFilter f = IdFilter.from(a);
         Map<Item, Integer> inv = Inventories.counts(p.getInventory(), false);
-        record Craftable(RecipeHolder<?> h, int times, boolean table) {}
+        record Craftable(RecipeView r, int times, boolean table) {}
         List<Craftable> out = new ArrayList<>();
-        for (RecipeHolder<?> h : s.manager().getRecipes()) {
-            Recipe<?> r = h.value();
-            if (!type.equals(RecipeJson.type(r)) || r.isSpecial()) continue;
-            ItemStack res = RecipeJson.result(r, s.regs());
+        for (RecipeView r : s.recipes()) {
+            if (!type.equals(r.type()) || r.special()) continue;
+            ItemStack res = r.result();
             if (res.isEmpty()) continue;
-            if (!f.test(h.id(), () -> res.getHoverName().getString())) continue;
-            List<Ingredient> ings = r.getIngredients();
-            if (ings.stream().allMatch(Ingredient::isEmpty)) continue;
+            if (!f.test(r.id(), () -> res.getHoverName().getString())) continue;
+            List<Ing> ings = r.inputs();
+            if (ings.isEmpty()) continue;
             Map<Item, Integer> work = new HashMap<>(inv);
             int times = 0;
             while (times < 64 && take(ings, work)) times++;
             if (times == 0) continue;
-            boolean table = r instanceof ShapedRecipe sr ? (sr.getWidth() > 2 || sr.getHeight() > 2)
-                    : ings.stream().filter(i -> !i.isEmpty()).count() > 4;
-            out.add(new Craftable(h, times, table));
+            boolean table = r.shaped() ? (r.width() > 2 || r.height() > 2) : ings.size() > 4;
+            out.add(new Craftable(r, times, table));
         }
-        out.sort(Comparator.comparing(c -> c.h.id()));
+        out.sort(Comparator.comparing(c -> c.r.id()));
         JsonObject o = Paging.page(out, a, c -> {
             JsonObject j = new JsonObject();
-            j.addProperty("id", c.h.id().toString());
-            j.add("result", Stacks.json(RecipeJson.result(c.h.value(), s.regs()), false, s.regs()));
+            j.addProperty("id", c.r.id().toString());
+            j.add("result", Stacks.json(c.r.result(), false, s.regs()));
             j.addProperty("max_crafts", c.times);
             j.addProperty("needs_crafting_table", c.table);
             return j;

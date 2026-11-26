@@ -1,5 +1,6 @@
 package dev.yamc.mcp.tools;
 
+import dev.yamc.mcp.util.Mc;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import com.mojang.datafixers.util.Pair;
@@ -46,7 +47,7 @@ final class RegistryTools {
                         o.addProperty("id", e.getKey().toString());
                         o.addProperty("source", e.getValue().source());
                         o.addProperty("size", e.getValue().registry().size());
-                        o.addProperty("tags", e.getValue().registry().getTagNames().count());
+                        o.addProperty("tags", Mc.tagCount(e.getValue().registry()));
                         o.addProperty("data_driven", Regs.elementCodec(e.getValue().registry().key()) != null);
                         return o;
                     }, 200));
@@ -106,20 +107,20 @@ final class RegistryTools {
     private static JsonObject withRegistry(Args a, Body body) {
         Regs.Resolved<?> res = Regs.resolve(a.reqId("registry"), Source.from(a));
         JsonObject o = body.apply(a, res);
-        o.addProperty("registry", res.registry().key().location().toString());
+        o.addProperty("registry", Mc.id(res.registry().key()).toString());
         o.addProperty("source", res.source());
         return o;
     }
 
     static <T> Holder.Reference<T> holder(Registry<T> reg, ResourceLocation id) {
-        return reg.getHolder(id).orElseThrow(() -> new ToolException("No entry '" + id + "' in registry " + reg.key().location()
+        return Mc.holder(reg, id).orElseThrow(() -> new ToolException("No entry '" + id + "' in registry " + Mc.id(reg.key())
                 + ". Use registry_entries with query= to search."));
     }
 
     static <T> Set<ResourceLocation> tagMemberIds(Registry<T> reg, ResourceLocation tagId) {
-        HolderSet.Named<T> set = reg.getTag(TagKey.create(reg.key(), tagId)).orElseThrow(() ->
-                new ToolException("Unknown tag #" + tagId + " in registry " + reg.key().location() + ". Use tags_list."));
-        return set.stream().flatMap(h -> h.unwrapKey().stream()).map(ResourceKey::location).collect(Collectors.toSet());
+        HolderSet.Named<T> set = Mc.tag(reg, TagKey.create(reg.key(), tagId)).orElseThrow(() ->
+                new ToolException("Unknown tag #" + tagId + " in registry " + Mc.id(reg.key()) + ". Use tags_list."));
+        return set.stream().flatMap(h -> h.unwrapKey().stream()).map(Mc::id).collect(Collectors.toSet());
     }
 
     private static <T> JsonObject entries(Args a, Regs.Resolved<T> res) {
@@ -127,13 +128,13 @@ final class RegistryTools {
         IdFilter f = IdFilter.from(a);
         boolean names = a.bool("include_names", true), tags = a.bool("include_tags", false);
         Set<ResourceLocation> tagSet = a.has("tag") ? tagMemberIds(reg, a.reqId("tag")) : null;
-        List<Holder.Reference<T>> list = reg.holders().filter(h -> {
-            ResourceLocation id = h.key().location();
+        List<Holder.Reference<T>> list = Mc.holders(reg).filter(h -> {
+            ResourceLocation id = Mc.id(h.key());
             return (tagSet == null || tagSet.contains(id)) && f.test(id, () -> Names.of(reg.key(), id, h.value()));
-        }).sorted(Comparator.comparing(h -> h.key().location())).toList();
+        }).sorted(Comparator.comparing((Holder.Reference<T> h) -> Mc.id(h.key()))).toList();
         return Paging.page(list, a, h -> names || tags
                 ? RegistryJson.entry(reg, h, res.access(), names, tags, false)
-                : new JsonPrimitive(h.key().location().toString()), 100);
+                : new JsonPrimitive(Mc.id(h.key()).toString()), 100);
     }
 
     private static <T> JsonObject entry(Args a, Regs.Resolved<T> res) {
@@ -154,8 +155,8 @@ final class RegistryTools {
 
     private static <T> JsonObject tagsList(Args a, Regs.Resolved<T> res) {
         IdFilter f = IdFilter.from(a);
-        List<HolderSet.Named<T>> tags = res.registry().getTags().map(Pair::getSecond).filter(s -> f.test(s.key().location(), null))
-                .sorted(Comparator.comparing(s -> s.key().location())).toList();
+        List<HolderSet.Named<T>> tags = Mc.tags(res.registry()).filter(s -> f.test(s.key().location(), null))
+                .sorted(Comparator.comparing((HolderSet.Named<T> s) -> s.key().location())).toList();
         return Paging.page(tags, a, s -> {
             JsonObject e = new JsonObject();
             e.addProperty("tag", "#" + s.key().location());

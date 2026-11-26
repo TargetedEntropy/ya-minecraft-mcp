@@ -2,16 +2,13 @@ package dev.yamc.mcp.tools;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import dev.yamc.mcp.json.RecipeJson;
 import dev.yamc.mcp.mcp.Args;
 import dev.yamc.mcp.mcp.ToolException;
+import dev.yamc.mcp.recipe.Ing;
+import dev.yamc.mcp.recipe.RecipeView;
 import dev.yamc.mcp.util.Inventories;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.Item;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.crafting.Ingredient;
-import net.minecraft.world.item.crafting.Recipe;
-import net.minecraft.world.item.crafting.RecipeHolder;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -48,12 +45,11 @@ final class CraftPlanner {
     }
 
     /** True if every ingredient of the recipe (for the given number of crafts) is already in the inventory. */
-    private boolean coveredByInventory(RecipeHolder<?> h, int crafts) {
+    private boolean coveredByInventory(RecipeView r, int crafts) {
         Map<Item, Integer> need = new HashMap<>();
-        for (Ingredient ing : h.value().getIngredients()) {
-            if (ing.isEmpty()) continue;
+        for (Ing ing : r.inputs()) {
             Item best = null;
-            for (ItemStack o : ing.getItems()) if (inv.getOrDefault(o.getItem(), 0) > 0) { best = o.getItem(); break; }
+            for (Item o : ing.options()) if (inv.getOrDefault(o, 0) > 0) { best = o; break; }
             if (best == null) return false;
             need.merge(best, crafts, Integer::sum);
         }
@@ -125,24 +121,22 @@ final class CraftPlanner {
             }
         }
         if (needed == 0) return node;
-        List<RecipeHolder<?>> recipes = candidates(item, needed, root);
+        List<RecipeView> recipes = candidates(item, needed, root);
         if (recipes.isEmpty() || depth >= maxDepth || path.contains(item) || (!root && raw.contains(item))) {
             node.addProperty("missing", needed);
             missing.merge(id, needed, Integer::sum);
             return node;
         }
-        RecipeHolder<?> chosen = choose(recipes, path, item);
-        Recipe<?> r = chosen.value();
-        int per = graph.yield(chosen);
+        RecipeView chosen = choose(recipes, path, item);
+        int per = chosen.yield();
         int crafts = (needed + per - 1) / per;
         node.addProperty("recipe", chosen.id().toString());
         node.addProperty("crafts", crafts);
         // group identical ingredients
-        Map<String, Ingredient> ingBySig = new LinkedHashMap<>();
+        Map<String, Ing> ingBySig = new LinkedHashMap<>();
         Map<String, Integer> qty = new LinkedHashMap<>();
-        for (Ingredient ing : r.getIngredients()) {
-            if (ing.isEmpty()) continue;
-            String sig = RecipeJson.signature(ing);
+        for (Ing ing : chosen.inputs()) {
+            String sig = ing.signature();
             ingBySig.putIfAbsent(sig, ing);
             qty.merge(sig, 1, Integer::sum);
         }
@@ -157,7 +151,7 @@ final class CraftPlanner {
         node.add("ingredients", children);
         JsonObject step = new JsonObject();
         step.addProperty("recipe", chosen.id().toString());
-        step.addProperty("type", RecipeJson.type(r));
+        step.addProperty("type", chosen.type());
         step.addProperty("output", id);
         step.addProperty("crafts", crafts);
         step.addProperty("produces", crafts * per);
@@ -171,13 +165,13 @@ final class CraftPlanner {
     }
 
     /** Usable recipes for an item: excluded namespaces removed; reversible ones only at the root or when the inventory covers them. */
-    private List<RecipeHolder<?>> candidates(Item item, int needed, boolean root) {
-        List<RecipeHolder<?>> out = new ArrayList<>();
+    private List<RecipeView> candidates(Item item, int needed, boolean root) {
+        List<RecipeView> out = new ArrayList<>();
         int skipped = 0;
-        for (RecipeHolder<?> h : graph.recipesFor(item)) {
+        for (RecipeView h : graph.recipesFor(item)) {
             if (excludeNamespaces.contains(h.id().getNamespace())) continue;
             if (!root && graph.reversible(h, item)) {
-                int per = graph.yield(h);
+                int per = h.yield();
                 if (!coveredByInventory(h, (needed + per - 1) / per)) {
                     skipped++;
                     continue;
@@ -194,17 +188,16 @@ final class CraftPlanner {
      * back into the current path. The reversible filter in {@link #candidates} only catches two-step cycles
      * (X from Y from X); this also covers longer ones.
      */
-    private RecipeHolder<?> choose(List<RecipeHolder<?>> recipes, Set<Item> path, Item item) {
-        RecipeHolder<?> best = recipes.get(0);
+    private RecipeView choose(List<RecipeView> recipes, Set<Item> path, Item item) {
+        RecipeView best = recipes.get(0);
         int bestScore = Integer.MIN_VALUE;
-        for (RecipeHolder<?> h : recipes) {
+        for (RecipeView h : recipes) {
             int score = 0;
-            for (Ingredient ing : h.value().getIngredients()) {
-                if (ing.isEmpty()) continue;
+            for (Ing ing : h.inputs()) {
                 boolean inInv = false, cyclic = true;
-                for (ItemStack s : ing.getItems()) {
-                    if (inv.getOrDefault(s.getItem(), 0) > 0) inInv = true;
-                    if (!path.contains(s.getItem()) && s.getItem() != item) cyclic = false;
+                for (Item s : ing.options()) {
+                    if (inv.getOrDefault(s, 0) > 0) inInv = true;
+                    if (!path.contains(s) && s != item) cyclic = false;
                 }
                 if (inInv) score += 3;
                 if (cyclic) score -= 100;
@@ -217,19 +210,18 @@ final class CraftPlanner {
         return best;
     }
 
-    private Item pickItem(Ingredient ing, int amount, Set<Item> path) {
-        ItemStack[] opts = ing.getItems();
-        if (opts.length == 0) return null;
+    private Item pickItem(Ing ing, int amount, Set<Item> path) {
+        List<Item> opts = ing.options();
+        if (opts.isEmpty()) return null;
         Item craftable = null, any = null;
-        for (ItemStack s : opts) {
-            Item it = s.getItem();
+        for (Item it : opts) {
             if (path.contains(it)) continue;
             if (inv.getOrDefault(it, 0) >= amount) return it;
             if (any == null) any = it;
             if (craftable == null && graph.craftable(it)) craftable = it;
         }
-        for (ItemStack s : opts) if (inv.getOrDefault(s.getItem(), 0) > 0 && !path.contains(s.getItem())) return s.getItem();
+        for (Item it : opts) if (inv.getOrDefault(it, 0) > 0 && !path.contains(it)) return it;
         if (craftable != null) return craftable;
-        return any != null ? any : opts[0].getItem();
+        return any != null ? any : opts.get(0);
     }
 }

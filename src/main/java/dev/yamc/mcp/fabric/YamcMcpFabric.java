@@ -9,7 +9,6 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
-import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.fabricmc.loader.api.FabricLoader;
 
 // Fabric entrypoint: forwards Fabric API events to ClientEvents. Screen open/close come from MinecraftMixin.
@@ -24,11 +23,15 @@ public final class YamcMcpFabric implements ClientModInitializer {
         ClientLifecycleEvents.CLIENT_STOPPING.register(mc -> ClientEvents.shutdown());
         ClientTickEvents.END_CLIENT_TICK.register(mc -> ClientEvents.tick());
         ClientReceiveMessageEvents.CHAT.register((message, signed, sender, params, time) ->
-                ClientEvents.chat(message, sender == null ? null : sender.getId(), false, false));
+                ClientEvents.chat(message, sender == null ? null : dev.yamc.mcp.util.Mc.id(sender), false, false));
         ClientReceiveMessageEvents.GAME.register((message, overlay) -> ClientEvents.chat(message, null, true, overlay));
         ClientPlayConnectionEvents.JOIN.register((handler, sender, mc) -> ClientEvents.loggingIn());
         ClientPlayConnectionEvents.DISCONNECT.register((handler, mc) -> ClientEvents.loggingOut());
-        WorldRenderEvents.AFTER_ENTITIES.register(ctx -> ClientEvents.renderLevel(ctx.matrixStack(), ctx.camera()));
+        //? if >=1.21.9 {
+        /^net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents.AFTER_ENTITIES.register(ctx ->
+                ClientEvents.renderLevel(ctx.matrices(), net.minecraft.client.Minecraft.getInstance().gameRenderer.getMainCamera()));
+        ^///?} else
+        net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents.AFTER_ENTITIES.register(ctx -> ClientEvents.renderLevel(ctx.matrixStack(), ctx.camera()));
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registries) -> dispatcher.register(YamcMcp.command()));
     }
 }

@@ -35,9 +35,16 @@ public final class YamcMcpNeoForge {
         bus.addListener(ScreenEvent.Closing.class, e -> ClientEvents.screenClosing(e.getScreen()));
         bus.addListener(ClientPlayerNetworkEvent.LoggingIn.class, e -> ClientEvents.loggingIn());
         bus.addListener(ClientPlayerNetworkEvent.LoggingOut.class, e -> ClientEvents.loggingOut());
+        //? if >=1.21.9 {
+        /*bus.addListener(RenderLevelStageEvent.AfterEntities.class, e ->
+                ClientEvents.renderLevel(e.getPoseStack(), net.minecraft.client.Minecraft.getInstance().gameRenderer.getMainCamera()));
+        *///?} elif >=1.21.6 {
+        /*bus.addListener(RenderLevelStageEvent.AfterBlockEntities.class, e -> ClientEvents.renderLevel(e.getPoseStack(), e.getCamera()));
+        *///?} else {
         bus.addListener(RenderLevelStageEvent.class, e -> {
             if (e.getStage() == RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES) ClientEvents.renderLevel(e.getPoseStack(), e.getCamera());
         });
+        //?}
         bus.addListener(RegisterClientCommandsEvent.class, e -> e.getDispatcher().register(YamcMcp.command()));
     }
 }

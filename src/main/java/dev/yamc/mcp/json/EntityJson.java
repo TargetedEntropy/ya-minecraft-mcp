@@ -1,5 +1,6 @@
 package dev.yamc.mcp.json;
 
+import dev.yamc.mcp.util.Mc;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
@@ -85,7 +86,7 @@ public final class EntityJson {
             o.add("effects", fx);
             o.addProperty("armor", le.getArmorValue());
         }
-        if (e instanceof Player pl) o.addProperty("player_name", pl.getGameProfile().getName());
+        if (e instanceof Player pl) o.addProperty("player_name", Mc.name(pl.getGameProfile()));
         return o;
     }
 }

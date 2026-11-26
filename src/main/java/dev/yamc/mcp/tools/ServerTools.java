@@ -1,5 +1,6 @@
 package dev.yamc.mcp.tools;
 
+import dev.yamc.mcp.util.Mc;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -73,9 +74,8 @@ final class ServerTools {
     static JsonObject lootTable(Args a) {
         MinecraftServer s = IntegratedServer.require();
         ResourceLocation id = a.reqId("id");
-        RegistryAccess access = s.reloadableRegistries().get();
-        Registry<LootTable> reg = access.registryOrThrow(Registries.LOOT_TABLE);
-        LootTable t = reg.get(id);
+        RegistryAccess access = Mc.serverRegistries(s);
+        LootTable t = Mc.lootTable(s, id);
         if (t == null) throw new ToolException("No loot table '" + id + "'. Use registry_entries registry=minecraft:loot_table query=...");
         JsonElement raw = Json.encode(LootTable.DIRECT_CODEC, t, access);
         Set<String> items = new TreeSet<>(), tags = new TreeSet<>(), refs = new TreeSet<>();
@@ -115,8 +115,8 @@ final class ServerTools {
         MinecraftServer s = IntegratedServer.require();
         ResourceLocation id = a.reqId("id");
         RegistryAccess access = s.registryAccess();
-        Registry<Structure> reg = access.registryOrThrow(Registries.STRUCTURE);
-        Structure st = reg.get(id);
+        Registry<Structure> reg = Mc.registryOrThrow(access, Registries.STRUCTURE);
+        Structure st = Mc.value(reg, id);
         if (st == null) throw new ToolException("No structure '" + id + "'. Use registry_entries registry=minecraft:worldgen/structure.");
         JsonObject o = new JsonObject();
         o.addProperty("id", id.toString());
@@ -127,13 +127,13 @@ final class ServerTools {
         o.add("biomes", biomes);
         st.biomes().unwrapKey().ifPresent(tag -> o.addProperty("biome_tag", "#" + tag.location()));
         JsonArray sets = new JsonArray();
-        Registry<StructureSet> setReg = access.registryOrThrow(Registries.STRUCTURE_SET);
+        Registry<StructureSet> setReg = Mc.registryOrThrow(access, Registries.STRUCTURE_SET);
         for (var e : setReg.entrySet()) {
             StructureSet set = e.getValue();
             boolean contains = set.structures().stream().anyMatch(se -> se.structure().is(id));
             if (!contains) continue;
             JsonObject so = new JsonObject();
-            so.addProperty("id", e.getKey().location().toString());
+            so.addProperty("id", Mc.id(e.getKey()).toString());
             so.add("placement", Json.encode(StructurePlacement.CODEC, set.placement(), access));
             JsonArray members = new JsonArray();
             for (var se : set.structures()) {
@@ -147,7 +147,7 @@ final class ServerTools {
         }
         o.add("structure_sets", sets);
         JsonArray tagsArr = new JsonArray();
-        reg.getHolder(id).ifPresent(h -> h.tags().map(t -> "#" + t.location()).sorted().forEach(tagsArr::add));
+        Mc.holder(reg, id).ifPresent(h -> h.tags().map(t -> "#" + t.location()).sorted().forEach(tagsArr::add));
         o.add("tags", tagsArr);
         if (a.bool("include_raw", false)) o.add("raw", Json.encode(Structure.DIRECT_CODEC, st, access));
         return o;
@@ -178,7 +178,7 @@ final class ServerTools {
             var found = search.find(lvl, org.pos());
             JsonObject o = new JsonObject();
             o.addProperty("found", found != null);
-            o.addProperty("dimension", org.dim().location().toString());
+            o.addProperty("dimension", Mc.id(org.dim()).toString());
             o.add("origin", Json.pos(org.pos()));
             if (found != null) {
                 o.addProperty(foundKey, found.getSecond().getRegisteredName());
@@ -195,7 +195,7 @@ final class ServerTools {
         String spec = a.reqStr("structure");
         int radius = a.integer("radius_chunks", 100, 1, 300);
         return locate(a, "structure", lvl -> {
-            HolderSet<Structure> set = Regs.holderSet(lvl.registryAccess().registryOrThrow(Registries.STRUCTURE), spec);
+            HolderSet<Structure> set = Regs.holderSet(Mc.registryOrThrow(lvl.registryAccess(), Registries.STRUCTURE), spec);
             return (l, origin) -> l.getChunkSource().getGenerator().findNearestMapStructure(l, set, origin, radius, false);
         });
     }
@@ -204,7 +204,7 @@ final class ServerTools {
         String spec = a.reqStr("biome");
         int radius = a.integer("radius", 6400, 64, 12800);
         return locate(a, "biome", lvl -> {
-            HolderSet<Biome> set = Regs.holderSet(lvl.registryAccess().registryOrThrow(Registries.BIOME), spec);
+            HolderSet<Biome> set = Regs.holderSet(Mc.registryOrThrow(lvl.registryAccess(), Registries.BIOME), spec);
             return (l, origin) -> l.findClosestBiome3d(set::contains, origin, radius, 32, 64);
         });
     }

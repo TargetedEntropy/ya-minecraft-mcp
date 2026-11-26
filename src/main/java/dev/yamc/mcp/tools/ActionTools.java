@@ -1,5 +1,7 @@
 package dev.yamc.mcp.tools;
 
+import dev.yamc.mcp.util.Inventories;
+import dev.yamc.mcp.util.Mc;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.google.gson.JsonObject;
 import dev.yamc.mcp.client.EventLog;
@@ -102,7 +104,7 @@ final class ActionTools {
                     int s = a.reqInt("slot");
                     if (s < 0 || s > 8) throw new ToolException("slot must be 0-8");
                     LocalPlayer p = Ctx.player();
-                    p.getInventory().selected = s;
+                    Inventories.select(p.getInventory(), s);
                     JsonObject o = new JsonObject();
                     o.addProperty("selected_slot", s);
                     o.add("item", Stacks.json(p.getMainHandItem(), false, p.registryAccess()));
@@ -217,8 +219,7 @@ final class ActionTools {
                                 mc.gui.setSubtitle(Component.literal(msg));
                             } else mc.gui.setTitle(Component.literal(msg));
                         }
-                        case "toast" -> SystemToast.addOrUpdate(mc.getToasts(), SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
-                                Component.literal(a.str("title", "Claude")), Component.literal(msg));
+                        case "toast" -> Mc.toast(mc, Component.literal(a.str("title", "Claude")), Component.literal(msg));
                         default -> Ctx.player().displayClientMessage(Component.literal("[Claude] ").withStyle(ChatFormatting.LIGHT_PURPLE)
                                 .append(Component.literal(msg).withStyle(ChatFormatting.WHITE)), false);
                     }
@@ -261,7 +262,7 @@ final class ActionTools {
 
     static Direction faceToward(LocalPlayer p, BlockPos pos) {
         Vec3 d = p.getEyePosition().subtract(Vec3.atCenterOf(pos));
-        return Direction.getNearest(d.x, d.y, d.z);
+        return Mc.nearestDirection(d.x, d.y, d.z);
     }
 
     static ToolResult interact(Args a) {
@@ -274,8 +275,8 @@ final class ActionTools {
         switch (action) {
             case "use_item" -> {
                 InteractionResult res = mc.gameMode.useItem(p, hand);
-                if (res.shouldSwing()) p.swing(hand);
-                o.addProperty("result", res.name().toLowerCase(Locale.ROOT));
+                if (Mc.swings(res)) p.swing(hand);
+                o.addProperty("result", Mc.name(res));
             }
             case "use_on_block" -> {
                 BlockHitResult hit;
@@ -289,8 +290,8 @@ final class ActionTools {
                     hit = bh;
                 } else throw new ToolException("No block given and the crosshair is not on a block.");
                 InteractionResult res = mc.gameMode.useItemOn(p, hand, hit);
-                if (res.shouldSwing()) p.swing(hand);
-                o.addProperty("result", res.name().toLowerCase(Locale.ROOT));
+                if (Mc.swings(res)) p.swing(hand);
+                o.addProperty("result", Mc.name(res));
                 o.add("pos", Json.pos(hit.getBlockPos()));
                 o.addProperty("face", hit.getDirection().getName());
             }
@@ -304,8 +305,8 @@ final class ActionTools {
                     p.swing(InteractionHand.MAIN_HAND);
                 } else {
                     InteractionResult res = mc.gameMode.interact(p, target, hand);
-                    if (res.shouldSwing()) p.swing(hand);
-                    o.addProperty("result", res.name().toLowerCase(Locale.ROOT));
+                    if (Mc.swings(res)) p.swing(hand);
+                    o.addProperty("result", Mc.name(res));
                 }
                 o.addProperty("target", target.getName().getString());
                 o.addProperty("distance", Json.round(target.distanceTo(p)));

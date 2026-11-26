@@ -1,5 +1,6 @@
 package dev.yamc.mcp.util;
 
+import dev.yamc.mcp.util.Mc;
 import dev.yamc.mcp.YamcMcp;
 import com.mojang.serialization.Codec;
 import dev.yamc.mcp.mcp.Args;
@@ -54,11 +55,11 @@ public final class Regs {
      */
     public static <T> HolderSet<T> holderSet(Registry<T> reg, String spec) {
         ResourceLocation id = Args.parseId(spec);
-        String r = reg.key().location().toString();
+        String r = Mc.id(reg.key()).toString();
         if (spec.trim().startsWith("#"))
-            return reg.getTag(TagKey.create(reg.key(), id))
+            return Mc.tag(reg, TagKey.create(reg.key(), id))
                     .orElseThrow(() -> new ToolException("Unknown tag #" + id + " in registry " + r + ". Use tags_list registry=" + r + "."));
-        return reg.getHolder(id).<HolderSet<T>>map(HolderSet::direct)
+        return Mc.holder(reg, id).<HolderSet<T>>map(HolderSet::direct)
                 .orElseThrow(() -> new ToolException("Unknown entry '" + id + "' in registry " + r + ". Use registry_entries registry=" + r + " query=... to search."));
     }
 
@@ -66,11 +67,7 @@ public final class Regs {
     public static RegistryAccess serverAccess() {
         MinecraftServer s = IntegratedServer.get();
         if (s == null) return null;
-        try {
-            return s.reloadableRegistries().get();
-        } catch (Throwable t) {
-            return s.registryAccess();
-        }
+        return Mc.serverRegistries(s);
     }
 
     /** Registry access used for codec encoding: the richest one available. */
@@ -83,18 +80,18 @@ public final class Regs {
     }
 
     public static boolean isStatic(ResourceKey<? extends Registry<?>> key) {
-        return BuiltInRegistries.REGISTRY.containsKey(key.location());
+        return BuiltInRegistries.REGISTRY.containsKey(Mc.id(key));
     }
 
     /** All known registries: id -> resolved (preferring client view for synced ones). */
     public static Map<ResourceLocation, Resolved<?>> all() {
         Map<ResourceLocation, Resolved<?>> out = new TreeMap<>();
         RegistryAccess server = serverAccess();
-        if (server != null) server.registries().forEach(e -> out.put(e.key().location(), new Resolved<>(e.value(), sourceFor(e.key(), false), server)));
+        if (server != null) server.registries().forEach(e -> out.put(Mc.id(e.key()), new Resolved<>(e.value(), sourceFor(e.key(), false), server)));
         RegistryAccess client = clientAccess();
-        if (client != null) client.registries().forEach(e -> out.put(e.key().location(), new Resolved<>(e.value(), sourceFor(e.key(), true), client)));
+        if (client != null) client.registries().forEach(e -> out.put(Mc.id(e.key()), new Resolved<>(e.value(), sourceFor(e.key(), true), client)));
         RegistryAccess stat = RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY);
-        for (Registry<?> r : BuiltInRegistries.REGISTRY) out.putIfAbsent(r.key().location(), new Resolved<>(r, "static", stat));
+        for (Registry<?> r : BuiltInRegistries.REGISTRY) out.putIfAbsent(Mc.id(r.key()), new Resolved<>(r, "static", stat));
         return out;
     }
 
@@ -109,19 +106,19 @@ public final class Regs {
         RegistryAccess client = clientAccess();
         if (pref == Source.SERVER) {
             RegistryAccess server = requireServerAccess();
-            return server.registry(key).map(r -> new Resolved<>(r, sourceFor(key, false), server))
+            return Mc.<Object>registry(server, key).map(r -> new Resolved<>(r, sourceFor(key, false), server))
                     .orElseThrow(() -> new ToolException("Registry '" + id + "' not found on the integrated server."));
         }
         RegistryAccess server = serverAccess();
         if (client != null) {
-            var r = client.registry(key);
+            var r = Mc.<Object>registry(client, key);
             if (r.isPresent()) return new Resolved<>(r.get(), sourceFor(key, true), client);
         }
         if (pref == Source.AUTO && server != null) {
-            var r = server.registry(key);
+            var r = Mc.<Object>registry(server, key);
             if (r.isPresent()) return new Resolved<>(r.get(), sourceFor(key, false), server);
         }
-        Registry<?> stat = BuiltInRegistries.REGISTRY.get(id);
+        Registry<?> stat = Mc.staticRegistry(id);
         if (stat != null) return new Resolved<>(stat, "static", RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY));
         String hint = client == null ? " Not in a world, so only static registries are available." :
                 (server == null ? " This may be a server-only registry (structures, worldgen, loot tables): those are only readable in singleplayer/LAN-host." : "");

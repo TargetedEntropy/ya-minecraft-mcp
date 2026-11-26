@@ -1,5 +1,6 @@
 package dev.yamc.mcp;
 
+import dev.yamc.mcp.util.Mc;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import dev.yamc.mcp.mcp.McpHttpServer;
@@ -122,8 +123,8 @@ public final class YamcMcp {
                     msg(Component.literal("[YAMC MCP] ").withStyle(ChatFormatting.AQUA)
                             .append(Component.literal("Claude Code setup command copied to clipboard. ").withStyle(ChatFormatting.WHITE))
                             .append(Component.literal("(hover)").withStyle(s -> s.withColor(ChatFormatting.GRAY)
-                                    .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal(cmd)))
-                                    .withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, cmd)))));
+                                    .withHoverEvent(Mc.showText(Component.literal(cmd)))
+                                    .withClickEvent(Mc.copyToClipboard(cmd)))));
                     return Command.SINGLE_SUCCESS;
                 }));
     }

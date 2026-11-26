@@ -1,106 +1,71 @@
 package dev.yamc.mcp.json;
 
-import dev.yamc.mcp.platform.Platform;
-import dev.yamc.mcp.YamcMcp;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import dev.yamc.mcp.recipe.Ing;
+import dev.yamc.mcp.recipe.RecipeView;
 import dev.yamc.mcp.util.Json;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.crafting.AbstractCookingRecipe;
-import net.minecraft.world.item.crafting.Ingredient;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.crafting.Recipe;
-import net.minecraft.world.item.crafting.RecipeHolder;
-import net.minecraft.world.item.crafting.ShapedRecipe;
 
-import java.util.Arrays;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
-/** JSON for recipes and ingredients, plus the small recipe accessors the serializers and planner share. */
+/** JSON for recipes and ingredients. */
 public final class RecipeJson {
     private RecipeJson() {}
 
-    public static String type(Recipe<?> r) {
-        return String.valueOf(BuiltInRegistries.RECIPE_TYPE.getKey(r.getType()));
-    }
+    private static final int MAX_LISTED_OPTIONS = 16;
 
-    /** The result stack, or EMPTY when the recipe has none or computing it throws (some modded recipes do). */
-    public static ItemStack result(Recipe<?> r, HolderLookup.Provider regs) {
-        try {
-            ItemStack s = r.getResultItem(regs);
-            return s == null ? ItemStack.EMPTY : s;
-        } catch (Exception e) {
-            return ItemStack.EMPTY;
-        }
-    }
-
-    /** Identity of an ingredient by its options, for grouping equal ingredients. */
-    public static String signature(Ingredient ing) {
-        StringBuilder b = new StringBuilder();
-        Platform.CustomIngredient custom = YamcMcp.platform().customIngredient(ing);
-        if (custom != null) b.append("custom:").append(custom.identity()).append(';');
-        Arrays.stream(ing.getItems()).map(s -> BuiltInRegistries.ITEM.getKey(s.getItem()).toString()).sorted().forEach(x -> b.append(x).append(','));
-        return b.toString();
-    }
-
-    public static JsonObject ingredient(Ingredient ing) {
+    public static JsonObject ingredient(Ing ing) {
         JsonObject o = new JsonObject();
-        Platform.CustomIngredient custom = YamcMcp.platform().customIngredient(ing);
-        if (custom != null) {
-            o.addProperty("custom_type", custom.type());
+        if (ing.custom() != null) {
+            o.addProperty("custom_type", ing.custom().type());
         } else {
-            JsonArray tags = new JsonArray();
-            for (Ingredient.Value v : ing.values) if (v instanceof Ingredient.TagValue tv) tags.add("#" + tv.tag().location());
-            if (!tags.isEmpty()) o.add("tags", tags);
+            List<String> tags = ing.tags();
+            if (!tags.isEmpty()) o.add("tags", Json.strings(tags));
         }
         JsonArray arr = new JsonArray();
-        Set<String> seen = new HashSet<>();
-        for (ItemStack s : ing.getItems()) {
-            String id = BuiltInRegistries.ITEM.getKey(s.getItem()).toString();
-            if (seen.add(id) && arr.size() < 16) arr.add(s.getCount() > 1 ? s.getCount() + "x " + id : id);
+        for (Item i : ing.options()) {
+            if (arr.size() >= MAX_LISTED_OPTIONS) break;
+            arr.add(BuiltInRegistries.ITEM.getKey(i).toString());
         }
         o.add("items", arr);
-        if (seen.size() > 16) o.addProperty("item_count", seen.size());
+        if (ing.options().size() > MAX_LISTED_OPTIONS) o.addProperty("item_count", ing.options().size());
         return o;
     }
 
     /** id, type, result, pattern/key or ingredients, cooking data; plus the codec JSON when raw. */
-    public static JsonObject recipe(RecipeHolder<?> h, HolderLookup.Provider regs, boolean raw) {
-        Recipe<?> r = h.value();
+    public static JsonObject recipe(RecipeView r, HolderLookup.Provider regs, boolean raw) {
         JsonObject o = new JsonObject();
-        o.addProperty("id", h.id().toString());
-        o.addProperty("type", type(r));
-        o.addProperty("serializer", String.valueOf(BuiltInRegistries.RECIPE_SERIALIZER.getKey(r.getSerializer())));
-        if (!r.getGroup().isEmpty()) o.addProperty("group", r.getGroup());
-        ItemStack result = result(r, regs);
-        if (!result.isEmpty()) o.add("result", Stacks.json(result, false, regs));
-        if (r.isSpecial()) o.addProperty("special", true);
-        List<Ingredient> ings = r.getIngredients();
-        if (r instanceof ShapedRecipe sr) {
-            o.addProperty("width", sr.getWidth());
-            o.addProperty("height", sr.getHeight());
+        o.addProperty("id", r.id().toString());
+        o.addProperty("type", r.type());
+        o.addProperty("serializer", r.serializer());
+        if (!r.group().isEmpty()) o.addProperty("group", r.group());
+        if (!r.result().isEmpty()) o.add("result", Stacks.json(r.result(), false, regs));
+        if (r.special()) o.addProperty("special", true);
+        if (r.shaped()) {
+            o.addProperty("width", r.width());
+            o.addProperty("height", r.height());
             Map<String, Character> keyOf = new LinkedHashMap<>();
             JsonObject key = new JsonObject();
             JsonArray pattern = new JsonArray();
-            for (int y = 0; y < sr.getHeight(); y++) {
+            for (int y = 0; y < r.height(); y++) {
                 StringBuilder row = new StringBuilder();
-                for (int x = 0; x < sr.getWidth(); x++) {
-                    Ingredient ing = ings.get(y * sr.getWidth() + x);
+                for (int x = 0; x < r.width(); x++) {
+                    Ing ing = r.slots().get(y * r.width() + x);
                     if (ing.isEmpty()) {
                         row.append(' ');
                         continue;
                     }
-                    Character c = keyOf.computeIfAbsent(signature(ing), sig -> {
+                    row.append(keyOf.computeIfAbsent(ing.signature(), sig -> {
                         char k = (char) ('A' + keyOf.size());
                         key.add(String.valueOf(k), ingredient(ing));
                         return k;
-                    });
-                    row.append(c);
+                    }));
                 }
                 pattern.add(row.toString());
             }
@@ -108,14 +73,14 @@ public final class RecipeJson {
             o.add("key", key);
         } else {
             JsonArray arr = new JsonArray();
-            for (Ingredient ing : ings) if (!ing.isEmpty()) arr.add(ingredient(ing));
+            for (Ing ing : r.inputs()) arr.add(ingredient(ing));
             o.add("ingredients", arr);
         }
-        if (r instanceof AbstractCookingRecipe cr) {
-            o.addProperty("cooking_time_ticks", cr.getCookingTime());
-            o.addProperty("experience", cr.getExperience());
+        if (r.cooking() != null) {
+            o.addProperty("cooking_time_ticks", r.cooking().ticks());
+            o.addProperty("experience", r.cooking().experience());
         }
-        if (raw) o.add("raw", Json.encode(Recipe.CODEC, r, regs));
+        if (raw) o.add("raw", Json.encode(Recipe.CODEC, r.recipe(), regs));
         return o;
     }
 }

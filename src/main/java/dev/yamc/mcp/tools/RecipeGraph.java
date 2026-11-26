@@ -1,14 +1,10 @@
 package dev.yamc.mcp.tools;
 
-import dev.yamc.mcp.json.RecipeJson;
+import dev.yamc.mcp.recipe.Ing;
+import dev.yamc.mcp.recipe.RecipeView;
 import net.minecraft.world.item.Item;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.crafting.Ingredient;
-import net.minecraft.world.item.crafting.Recipe;
-import net.minecraft.world.item.crafting.RecipeHolder;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -24,11 +20,11 @@ final class RecipeGraph {
     /** Ingredients with more options than this are broad tags, not one half of a storage/compression pair. */
     private static final int MAX_PAIR_OPTIONS = 16;
 
-    /** Identity of a recipe set + type selection. The recipe collection is compared by identity: a reload replaces it. */
-    private record Key(Collection<RecipeHolder<?>> recipes, int size, Set<String> types, String source) {
+    /** Identity of a recipe set + type selection. The recipe list is compared by identity: a reload replaces it. */
+    private record Key(List<RecipeView> recipes, Set<String> types) {
         @Override
         public boolean equals(Object o) {
-            return o instanceof Key k && k.recipes == recipes && k.size == size && k.types.equals(types) && k.source.equals(source);
+            return o instanceof Key k && k.recipes == recipes && k.types.equals(types);
         }
 
         @Override
@@ -40,56 +36,42 @@ final class RecipeGraph {
     private static Key cachedKey;
     private static RecipeGraph cached;
 
-    private final RecipeSource src;
     /** Recipes per output item, vanilla first, then by id. */
-    private final Map<Item, List<RecipeHolder<?>>> byOutput = new HashMap<>();
+    private final Map<Item, List<RecipeView>> byOutput = new HashMap<>();
     /** item -> every item that is a (narrow) ingredient option of a recipe producing it */
     private final Map<Item, Set<Item>> inputsOf = new HashMap<>();
 
     static synchronized RecipeGraph of(RecipeSource src, Set<String> types) {
-        Collection<RecipeHolder<?>> recipes = src.manager().getRecipes();
-        Key key = new Key(recipes, recipes.size(), Set.copyOf(types), src.source());
+        Key key = new Key(src.recipes(), Set.copyOf(types));
         if (!key.equals(cachedKey)) {
-            cached = new RecipeGraph(src, recipes, types);
+            cached = new RecipeGraph(src.recipes(), types);
             cachedKey = key;
         }
         return cached;
     }
 
-    private RecipeGraph(RecipeSource src, Collection<RecipeHolder<?>> recipes, Set<String> types) {
-        this.src = src;
-        for (RecipeHolder<?> h : recipes) {
-            Recipe<?> r = h.value();
-            if (!types.contains(RecipeJson.type(r)) || r.isSpecial()) continue;
-            ItemStack res = RecipeJson.result(r, src.regs());
-            if (res.isEmpty() || r.getIngredients().stream().allMatch(Ingredient::isEmpty)) continue;
-            byOutput.computeIfAbsent(res.getItem(), k -> new ArrayList<>()).add(h);
-            Set<Item> ins = inputsOf.computeIfAbsent(res.getItem(), k -> new HashSet<>());
-            for (Ingredient ing : r.getIngredients()) for (Item o : narrowOptions(ing)) ins.add(o);
+    private RecipeGraph(List<RecipeView> recipes, Set<String> types) {
+        for (RecipeView r : recipes) {
+            if (!types.contains(r.type()) || r.special() || r.result().isEmpty() || r.inputs().isEmpty()) continue;
+            Item out = r.result().getItem();
+            byOutput.computeIfAbsent(out, k -> new ArrayList<>()).add(r);
+            Set<Item> ins = inputsOf.computeIfAbsent(out, k -> new HashSet<>());
+            for (Ing ing : r.inputs()) ins.addAll(narrowOptions(ing));
         }
-        Comparator<RecipeHolder<?>> vanillaFirst = Comparator.comparing(h -> !h.id().getNamespace().equals("minecraft"));
-        for (List<RecipeHolder<?>> l : byOutput.values()) l.sort(vanillaFirst.thenComparing(RecipeHolder::id));
+        Comparator<RecipeView> vanillaFirst = Comparator.comparing(r -> !r.id().getNamespace().equals("minecraft"));
+        for (List<RecipeView> l : byOutput.values()) l.sort(vanillaFirst.thenComparing(RecipeView::id));
     }
 
-    private static List<Item> narrowOptions(Ingredient ing) {
-        ItemStack[] opts = ing.getItems();
-        if (opts.length > MAX_PAIR_OPTIONS) return List.of();
-        List<Item> out = new ArrayList<>(opts.length);
-        for (ItemStack o : opts) out.add(o.getItem());
-        return out;
+    private static List<Item> narrowOptions(Ing ing) {
+        return ing.options().size() > MAX_PAIR_OPTIONS ? List.of() : ing.options();
     }
 
     boolean craftable(Item item) {
         return byOutput.containsKey(item);
     }
 
-    List<RecipeHolder<?>> recipesFor(Item item) {
+    List<RecipeView> recipesFor(Item item) {
         return byOutput.getOrDefault(item, List.of());
-    }
-
-    /** Items produced per craft (at least 1). */
-    int yield(RecipeHolder<?> h) {
-        return Math.max(1, RecipeJson.result(h.value(), src.regs()).getCount());
     }
 
     /**
@@ -97,8 +79,8 @@ final class RecipeGraph {
      * (storage blocks, nuggets, compression/decompression ladders). Using such recipes for intermediate
      * steps makes the planner climb compression tiers instead of treating X as a raw material.
      */
-    boolean reversible(RecipeHolder<?> h, Item out) {
-        for (Ingredient ing : h.value().getIngredients()) {
+    boolean reversible(RecipeView r, Item out) {
+        for (Ing ing : r.inputs()) {
             for (Item y : narrowOptions(ing)) {
                 Set<Item> ins = inputsOf.get(y);
                 if (ins != null && ins.contains(out)) return true;

@@ -1,5 +1,8 @@
 package dev.yamc.mcp.tools;
 
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.CompletableFuture;
+import dev.yamc.mcp.util.Mc;
 import dev.yamc.mcp.platform.Platform;
 import dev.yamc.mcp.YamcMcp;
 import com.google.gson.JsonArray;
@@ -18,7 +21,6 @@ import dev.yamc.mcp.json.Stacks;
 import net.minecraft.advancements.AdvancementHolder;
 import net.minecraft.advancements.AdvancementProgress;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.Screenshot;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
@@ -105,10 +107,17 @@ final class InfoTools {
         r.add(Tool.builder("screenshot").title("Screenshot")
                 .desc("Capture the current game frame as a PNG image so you can see what the player sees (including open GUIs).")
                 .schema(Schema.of().integer("max_width", "Downscale to at most this width (default 1280, max 3840)."))
+                .anyThread()
                 .handler(a -> {
                     Minecraft mc = Minecraft.getInstance();
                     int maxW = a.integer("max_width", 1280, 64, 3840);
-                    try (NativeImage img = Screenshot.takeScreenshot(mc.getMainRenderTarget())) {
+                    // Capture on the client thread; newer versions deliver the image after a GPU readback, so wait here.
+                    CompletableFuture<NativeImage> shot = new CompletableFuture<>();
+                    String screen = ClientThread.call(() -> {
+                        Mc.screenshot(mc, shot::complete);
+                        return mc.screen == null ? "in-game" : mc.screen.getClass().getSimpleName();
+                    });
+                    try (NativeImage img = shot.get(10, TimeUnit.SECONDS)) {
                         NativeImage out = img;
                         boolean scaled = false;
                         if (img.getWidth() > maxW) {
@@ -118,15 +127,17 @@ final class InfoTools {
                             scaled = true;
                         }
                         try {
-                            byte[] png = out.asByteArray();
+                            byte[] png = Mc.png(out);
                             JsonObject meta = new JsonObject();
                             meta.addProperty("width", out.getWidth());
                             meta.addProperty("height", out.getHeight());
-                            meta.addProperty("screen", mc.screen == null ? "in-game" : mc.screen.getClass().getSimpleName());
+                            meta.addProperty("screen", screen);
                             return new ToolResult().image(Base64.getEncoder().encodeToString(png), "image/png").text(meta.toString());
                         } finally {
                             if (scaled) out.close();
                         }
+                    } catch (java.util.concurrent.TimeoutException e) {
+                        throw new ToolException("The game did not deliver the screenshot within 10s (is the window minimized?).");
                     }
                 }));
     }

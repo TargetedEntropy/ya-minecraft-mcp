@@ -1,5 +1,8 @@
 package dev.yamc.mcp.tools;
 
+import dev.yamc.mcp.util.Mc;
+import java.util.List;
+import dev.yamc.mcp.util.Inventories;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import dev.yamc.mcp.mcp.Schema;
@@ -39,14 +42,14 @@ final class PlayerTools {
         JsonObject o = new JsonObject();
         o.addProperty("game_time", p.level().getGameTime());
         o.addProperty("timestamp_ms", System.currentTimeMillis());
-        o.addProperty("name", p.getGameProfile().getName());
+        o.addProperty("name", Mc.name(p.getGameProfile()));
         o.addProperty("uuid", p.getUUID().toString());
         o.add("position", Json.vec(p.position()));
         o.add("block_position", Json.pos(p.blockPosition()));
         o.addProperty("yaw", Json.round(net.minecraft.util.Mth.wrapDegrees(p.getYRot())));
         o.addProperty("pitch", Json.round(p.getXRot()));
         o.addProperty("facing", p.getDirection().getName());
-        o.addProperty("dimension", p.level().dimension().location().toString());
+        o.addProperty("dimension", Mc.id(p.level().dimension()).toString());
         o.addProperty("biome", p.level().getBiome(p.blockPosition()).getRegisteredName());
         o.addProperty("health", p.getHealth());
         o.addProperty("max_health", p.getMaxHealth());
@@ -97,7 +100,7 @@ final class PlayerTools {
             effects.add(eo);
         }
         o.add("effects", effects);
-        o.addProperty("selected_slot", p.getInventory().selected);
+        o.addProperty("selected_slot", Inventories.selected(p.getInventory()));
         o.add("main_hand", Stacks.json(p.getMainHandItem(), false, p.registryAccess()));
         o.add("off_hand", Stacks.json(p.getOffhandItem(), false, p.registryAccess()));
         return o;
@@ -107,10 +110,11 @@ final class PlayerTools {
         LocalPlayer p = Ctx.player();
         Inventory inv = p.getInventory();
         JsonObject o = new JsonObject();
-        o.addProperty("selected_slot", inv.selected);
+        o.addProperty("selected_slot", Inventories.selected(inv));
+        List<ItemStack> items = Inventories.main(inv);
         JsonArray hotbar = new JsonArray(), main = new JsonArray();
-        for (int i = 0; i < inv.items.size(); i++) {
-            ItemStack s = inv.items.get(i);
+        for (int i = 0; i < items.size(); i++) {
+            ItemStack s = items.get(i);
             if (s.isEmpty() && !includeEmpty) continue;
             JsonObject so = Stacks.json(s, full, p.registryAccess());
             so.addProperty("slot", i);
@@ -119,20 +123,19 @@ final class PlayerTools {
         o.add("hotbar", hotbar);
         o.add("main", main);
         JsonObject armor = new JsonObject();
-        EquipmentSlot[] slots = {EquipmentSlot.FEET, EquipmentSlot.LEGS, EquipmentSlot.CHEST, EquipmentSlot.HEAD};
-        for (int i = 0; i < inv.armor.size() && i < 4; i++) {
-            ItemStack s = inv.armor.get(i);
+        for (EquipmentSlot slot : Inventories.ARMOR) {
+            ItemStack s = p.getItemBySlot(slot);
             if (s.isEmpty() && !includeEmpty) continue;
-            armor.add(slots[i].getName(), Stacks.json(s, full, p.registryAccess()));
+            armor.add(slot.getName(), Stacks.json(s, full, p.registryAccess()));
         }
         o.add("armor", armor);
-        o.add("offhand", Stacks.json(inv.offhand.get(0), full, p.registryAccess()));
+        o.add("offhand", Stacks.json(p.getOffhandItem(), full, p.registryAccess()));
         ItemStack carried = p.containerMenu.getCarried();
         if (!carried.isEmpty()) o.add("carried", Stacks.json(carried, full, p.registryAccess()));
         int used = 0;
-        for (ItemStack s : inv.items) if (!s.isEmpty()) used++;
+        for (ItemStack s : items) if (!s.isEmpty()) used++;
         o.addProperty("used_slots", used);
-        o.addProperty("free_slots", inv.items.size() - used);
+        o.addProperty("free_slots", items.size() - used);
         return o;
     }
 }

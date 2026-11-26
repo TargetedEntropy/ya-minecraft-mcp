@@ -1,5 +1,6 @@
 package dev.yamc.mcp.tools;
 
+import dev.yamc.mcp.util.Mc;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import dev.yamc.mcp.json.BlockJson;
@@ -154,8 +155,8 @@ final class BlockTools {
         Predicate<BlockState> pred = blockPredicate(a.reqStr("block"));
         int rc = a.integer("radius_chunks", 4, 0, 16);
         int limit = a.integer("limit", 25, 1, 500);
-        int minY = a.integer("min_y", l.getMinBuildHeight());
-        int maxY = a.integer("max_y", l.getMaxBuildHeight());
+        int minY = a.integer("min_y", Mc.minY(l));
+        int maxY = a.integer("max_y", Mc.maxBuildHeight(l));
         BlockPos origin = p.blockPosition();
         int pcx = origin.getX() >> 4, pcz = origin.getZ() >> 4;
         record Hit(BlockPos pos, BlockState state, double d2) {}

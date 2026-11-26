@@ -1,5 +1,6 @@
 package dev.yamc.mcp.tools;
 
+import dev.yamc.mcp.util.Mc;
 import dev.yamc.mcp.YamcMcp;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -8,6 +9,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mojang.datafixers.util.Pair;
 import dev.yamc.mcp.json.RecipeJson;
+import dev.yamc.mcp.recipe.RecipeView;
 import dev.yamc.mcp.json.RegistryJson;
 import dev.yamc.mcp.mcp.Args;
 import dev.yamc.mcp.mcp.Schema;
@@ -20,9 +22,9 @@ import dev.yamc.mcp.util.Json;
 import dev.yamc.mcp.util.Source;
 import dev.yamc.mcp.util.Regs;
 import net.minecraft.core.Holder;
+import net.minecraft.core.HolderSet;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
-import net.minecraft.world.item.crafting.RecipeHolder;
 
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
@@ -85,8 +87,8 @@ final class ExportTools {
             try {
                 RecipeSource src = ClientThread.call(() -> RecipeSource.of(Source.AUTO));
                 JsonArray arr = new JsonArray();
-                src.manager().getRecipes().stream().sorted(Comparator.comparing(RecipeHolder::id))
-                        .forEach(h -> arr.add(RecipeJson.recipe(h, src.regs(), true)));
+                src.recipes().stream().sorted(Comparator.comparing(RecipeView::id))
+                        .forEach(r -> arr.add(RecipeJson.recipe(r, src.regs(), true)));
                 write(dir.resolve("recipes.json"), arr);
                 summary.addProperty("recipes", arr.size());
                 summary.addProperty("recipe_source", src.source());
@@ -99,14 +101,14 @@ final class ExportTools {
 
     private static <T> JsonArray entries(Registry<T> reg, RegistryAccess access) {
         JsonArray arr = new JsonArray();
-        reg.holders().sorted(Comparator.comparing(h -> h.key().location()))
+        Mc.holders(reg).sorted(Comparator.comparing((Holder.Reference<T> h) -> Mc.id(h.key())))
                 .forEach(h -> arr.add(RegistryJson.entry(reg, h, access, true, true, true)));
         return arr;
     }
 
     private static <T> JsonObject tags(Registry<T> reg) {
         JsonObject tags = new JsonObject();
-        reg.getTags().map(Pair::getSecond).sorted(Comparator.comparing(s -> s.key().location())).forEach(set ->
+        Mc.tags(reg).sorted(Comparator.comparing((HolderSet.Named<T> s) -> s.key().location())).forEach(set ->
                 tags.add("#" + set.key().location(), Json.strings(set.stream().map(Holder::getRegisteredName).sorted().toList())));
         return tags;
     }

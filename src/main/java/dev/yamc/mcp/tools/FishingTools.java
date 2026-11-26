@@ -37,6 +37,7 @@ final class FishingTools {
         r.add(Gates.action("fish").title("Fish")
                 .desc("Fish automatically with the held rod: cast, wait for a bite, reel in at the right moment, and collect the catch. Repeats for 'casts' catches. "
                         + "Stops early if the rod is about to break, the line lands outside water, or no fish bites within timeout_seconds. "
+                        + "One call runs at most 8 minutes (it then returns what it caught so far; call again to continue). Only one fish call runs at a time. "
                         + "Face water first (look_at). In singleplayer the game must not be paused (F3+P disables pause on focus loss).")
                 .schema(Schema.of().integer("casts", "Number of catches to attempt (default 1, max 64).")
                         .integer("timeout_seconds", "Max wait for a bite per cast (default 60, max 300).")
@@ -45,10 +46,13 @@ final class FishingTools {
                 .handler(a -> {
                     int casts = a.integer("casts", 1, 1, 64), timeout = a.integer("timeout_seconds", 60, 5, 300);
                     int minDurability = a.integer("min_durability", 2, 0, 100000);
-                    long totalMs = Math.min(30 * 60_000L, casts * (timeout + 15) * 1000L);
-                    return ToolResult.json(Ticker.run(() -> new FishingJob(casts, timeout, minDurability), totalMs));
+                    long budgetMs = Math.min(BATCH_LIMIT_MS, casts * (timeout + 15) * 1000L);
+                    return ToolResult.json(Ticker.run(() -> new FishingJob(casts, timeout, minDurability, budgetMs), budgetMs + 30_000));
                 }));
     }
+
+    /** One fish call's time budget: below Ticker.MAX_JOB_MS so the call returns its own result before any transport gives up. */
+    private static final long BATCH_LIMIT_MS = 8 * 60_000L;
 
     static boolean isRod(ItemStack s) {
         return !s.isEmpty() && (s.getItem() instanceof FishingRodItem || s.canPerformAction(ItemAbilities.FISHING_ROD_CAST));
@@ -63,7 +67,7 @@ final class FishingTools {
 
     /** Client view of the rod and line; open water comes from the integrated server's copy of the hook (the client cannot compute it). */
     static JsonObject status() throws Exception {
-        record Seen(JsonObject json, UUID player, boolean lineOut) {}
+        record Seen(JsonObject json, UUID player, UUID hook) {}
         Seen seen = ClientThread.call(() -> {
             LocalPlayer p = Ctx.player();
             JsonObject o = new JsonObject();
@@ -86,13 +90,14 @@ final class FishingTools {
                 if (hook.getHookedIn() != null) h.addProperty("hooked_entity", hook.getHookedIn().getName().getString());
                 o.add("bobber", h);
             }
-            return new Seen(o, p.getUUID(), out);
+            return new Seen(o, p.getUUID(), out ? hook.getUUID() : null);
         });
         MinecraftServer server = IntegratedServer.get();
-        if (seen.lineOut() && server != null) {
+        if (seen.hook() != null && server != null) {
             Boolean open = ClientThread.callServer(server, () -> {
                 var sp = server.getPlayerList().getPlayer(seen.player());
-                return sp == null || sp.fishing == null ? null : sp.fishing.isOpenWaterFishing();
+                // Only the same hook the client sampled: the player may have recast in between.
+                return sp == null || sp.fishing == null || !sp.fishing.getUUID().equals(seen.hook()) ? null : sp.fishing.isOpenWaterFishing();
             }, 5000);
             if (open != null) seen.json().getAsJsonObject("bobber").addProperty("open_water", open);
         }

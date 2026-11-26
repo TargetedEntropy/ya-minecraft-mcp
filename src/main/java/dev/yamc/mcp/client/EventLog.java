@@ -31,9 +31,10 @@ public final class EventLog {
 
     private EventLog() {}
 
-    /** Calls the listener (on the recording thread) for every event added from now on. */
-    public static void subscribe(Consumer<Event> listener) {
+    /** Calls the listener (on the recording thread) for every event added from now on. Run the returned handle to unsubscribe. */
+    public static Runnable subscribe(Consumer<Event> listener) {
         LISTENERS.add(listener);
+        return () -> LISTENERS.remove(listener);
     }
 
     public static void add(GameEvent type, JsonObject data) {

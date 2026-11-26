@@ -11,7 +11,11 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-/** Helpers to run code on the Minecraft client thread or the integrated server thread. */
+/**
+ * Helpers to run code on the Minecraft client thread or the integrated server thread.
+ * A queued task whose caller has already timed out is skipped, so a tool that reported a timeout
+ * never acts later (a retry would otherwise run it twice).
+ */
 public final class ClientThread {
     private ClientThread() {}
 
@@ -20,6 +24,7 @@ public final class ClientThread {
         if (mc.isSameThread()) return task.call();
         CompletableFuture<T> f = new CompletableFuture<>();
         mc.execute(() -> {
+            if (f.isDone()) return; // the caller gave up waiting
             try {
                 f.complete(task.call());
             } catch (Throwable t) {
@@ -33,6 +38,7 @@ public final class ClientThread {
         if (server.isSameThread()) return task.call();
         CompletableFuture<T> f = new CompletableFuture<>();
         server.execute(() -> {
+            if (f.isDone()) return; // the caller gave up waiting
             try {
                 f.complete(task.call());
             } catch (Throwable t) {
@@ -46,6 +52,7 @@ public final class ClientThread {
         try {
             return f.get(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
+            f.cancel(false);
             throw new ToolException("Timed out after " + timeoutMs + "ms waiting for the " + what + " (game frozen or loading?)");
         } catch (ExecutionException e) {
             Throwable c = e.getCause();

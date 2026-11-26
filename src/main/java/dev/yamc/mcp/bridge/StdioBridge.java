@@ -28,6 +28,12 @@ import java.util.stream.Stream;
  * stdout carries only JSON-RPC; diagnostics go to stderr.
  */
 public final class StdioBridge {
+    /**
+     * Longest a tool call may take: more than the longest multi-tick action (Ticker.MAX_JOB_MS, 9 minutes),
+     * so a long fish/move call returns its result instead of a bridge error while the game keeps acting.
+     */
+    private static final Duration REQUEST_TIMEOUT = Duration.ofMinutes(12);
+
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     private final PrintStream out;
     private final URI url;
@@ -102,7 +108,7 @@ public final class StdioBridge {
         boolean isRequest = method != null && id != null && !id.equals("null");
         if (method != null) method = TopLevel.unquote(method);
         try {
-            HttpRequest r = req().timeout(Duration.ofMinutes(10))
+            HttpRequest r = req().timeout(REQUEST_TIMEOUT)
                     .header("Content-Type", "application/json")
                     .header("Accept", "application/json, text/event-stream")
                     .POST(HttpRequest.BodyPublishers.ofString(msg, StandardCharsets.UTF_8)).build();

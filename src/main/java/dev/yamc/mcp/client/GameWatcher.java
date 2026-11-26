@@ -85,14 +85,9 @@ public final class GameWatcher {
                     (from, to, p) -> emit(GameEvent.GAMEMODE_CHANGE, "from", from.getName(), "to", to.getName())),
             Watch.of(20, p -> p.level().getBiome(p.blockPosition()).getRegisteredName(), (from, to, p) -> emit(GameEvent.BIOME_CHANGE, "from", from, "to", to)),
             Watch.of(5, GameWatcher::effects, GameWatcher::effectsChanged),
-            Watch.of(10, p -> Inventories.counts(p.getInventory(), true), GameWatcher::inventoryChanged),
-            Watch.of(1, CatchTracker::line, catches::lineChanged));
+            Watch.of(10, p -> Inventories.counts(p.getInventory(), true), GameWatcher::inventoryChanged));
 
     private int tick;
-
-    public GameWatcher() {
-        EventLog.subscribe(catches::onEvent);
-    }
     private final Map<Long, Long> recentChat = new HashMap<>();
 
     @SubscribeEvent
@@ -106,10 +101,12 @@ public final class GameWatcher {
         }
         tick++;
         for (Watch<?> w : watches) w.tick(p, tick);
+        catches.tick(p, mc.level);
     }
 
     private void resetWatches() {
         watches.forEach(Watch::reset);
+        catches.reset();
     }
 
     private static void emit(GameEvent type, String k1, String v1, String k2, String v2) {

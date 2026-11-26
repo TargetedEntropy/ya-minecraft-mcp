@@ -46,13 +46,26 @@ public final class Ticker {
 
     private Ticker() {}
 
-    /** Runs {@code setup} on the client thread, then steps the job it returns every tick. Setup errors are thrown here. */
+    /** Longest a job may run. Tools bound their own deadlines below this; the stdio bridge waits longer. */
+    public static final long MAX_JOB_MS = 9 * 60_000L;
+
+    /**
+     * Runs {@code setup} on the client thread, then steps the job it returns every tick. Setup errors are thrown here.
+     * The returned future is the job's cancellation handle and exists before setup is queued: if setup times out,
+     * it is skipped, or (if it already registered the job) the job is cancelled before its first step.
+     */
     public static <R> CompletableFuture<R> start(Callable<Job<R>> setup) throws Exception {
-        return ClientThread.call(() -> {
-            Running<R> r = new Running<>(setup.call(), new CompletableFuture<>());
-            RUNNING.add(r);
-            return r.done();
-        });
+        CompletableFuture<R> done = new CompletableFuture<>();
+        try {
+            ClientThread.call(() -> {
+                RUNNING.add(new Running<>(setup.call(), done));
+                return null;
+            });
+        } catch (Exception e) {
+            done.cancel(false);
+            throw e;
+        }
+        return done;
     }
 
     /** {@link #start} and wait for the result. A job that fails or times out throws; on timeout it is cancelled. */

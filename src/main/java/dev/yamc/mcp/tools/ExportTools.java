@@ -1,9 +1,13 @@
 package dev.yamc.mcp.tools;
 
+import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.mojang.serialization.Codec;
+import com.mojang.datafixers.util.Pair;
+import dev.yamc.mcp.json.RecipeJson;
+import dev.yamc.mcp.json.RegistryJson;
 import dev.yamc.mcp.mcp.Args;
 import dev.yamc.mcp.mcp.Schema;
 import dev.yamc.mcp.mcp.Tool;
@@ -12,12 +16,10 @@ import dev.yamc.mcp.mcp.ToolResult;
 import dev.yamc.mcp.util.ClientThread;
 import dev.yamc.mcp.util.IdFilter;
 import dev.yamc.mcp.util.Json;
-import dev.yamc.mcp.util.Names;
 import dev.yamc.mcp.util.Regs;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.tags.TagKey;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import net.neoforged.fml.loading.FMLPaths;
 
@@ -29,7 +31,6 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 
 final class ExportTools {
     private ExportTools() {}
@@ -44,56 +45,34 @@ final class ExportTools {
                 .handler(ExportTools::export));
     }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
     static ToolResult export(Args a) throws Exception {
         List<String> what = a.strList("what");
-        boolean all = what.isEmpty();
+        boolean all = what.isEmpty(), registries = all || what.contains("registries"), tags = all || what.contains("tags");
         IdFilter f = IdFilter.from(a);
         Path dir = FMLPaths.GAMEDIR.get().resolve("yamcmcp-export").resolve(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")));
         Files.createDirectories(dir);
-        var gson = new GsonBuilder().disableHtmlEscaping().setPrettyPrinting().create();
         JsonObject summary = new JsonObject();
         summary.addProperty("directory", dir.toAbsolutePath().toString());
-        Map<ResourceLocation, Regs.Resolved> regs = ClientThread.call(Regs::all);
-        if (all || what.contains("registries") || what.contains("tags")) {
+        if (registries || tags) {
             int files = 0, entries = 0;
-            for (var e : regs.entrySet()) {
+            for (var e : ClientThread.call(Regs::all).entrySet()) {
                 if (!f.test(e.getKey(), null)) continue;
-                Registry reg = e.getValue().registry();
-                Codec codec = Regs.elementCodec(reg.key());
                 Path base = dir.resolve(e.getKey().getNamespace());
-                if (all || what.contains("registries")) {
+                String file = e.getKey().getPath() + ".json";
+                if (registries) {
                     JsonObject out = new JsonObject();
                     out.addProperty("registry", e.getKey().toString());
                     out.addProperty("source", e.getValue().source());
-                    JsonArray arr = new JsonArray();
-                    List<Holder.Reference<?>> hs = ((java.util.stream.Stream<Holder.Reference<?>>) reg.holders())
-                            .sorted(Comparator.comparing(h -> h.key().location())).toList();
-                    for (Holder.Reference<?> h : hs) {
-                        JsonObject x = new JsonObject();
-                        x.addProperty("id", h.key().location().toString());
-                        String n = Names.of(reg.key(), h.key().location(), h.value());
-                        if (n != null) x.addProperty("name", n);
-                        x.add("tags", Json.strings(h.tags().map(t -> "#" + t.location()).sorted().toList()));
-                        if (codec != null) x.add("data", Json.encode(codec, h.value(), e.getValue().access()));
-                        arr.add(x);
-                        entries++;
-                    }
+                    JsonArray arr = entries(e.getValue().registry(), e.getValue().access());
                     out.add("entries", arr);
-                    write(gson, base.resolve("registries").resolve(e.getKey().getPath() + ".json"), out);
+                    write(base.resolve("registries").resolve(file), out);
                     files++;
+                    entries += arr.size();
                 }
-                if (all || what.contains("tags")) {
-                    JsonObject tags = new JsonObject();
-                    ((java.util.stream.Stream<com.mojang.datafixers.util.Pair<TagKey<?>, net.minecraft.core.HolderSet.Named<?>>>) reg.getTags())
-                            .sorted(Comparator.comparing(p -> p.getFirst().location()))
-                            .forEach(p -> {
-                                JsonArray m = new JsonArray();
-                                p.getSecond().stream().map(h -> ((Holder<?>) h).getRegisteredName()).sorted().forEach(m::add);
-                                tags.add("#" + p.getFirst().location(), m);
-                            });
-                    if (!tags.isEmpty()) {
-                        write(gson, base.resolve("tags").resolve(e.getKey().getPath() + ".json"), tags);
+                if (tags) {
+                    JsonObject t = tags(e.getValue().registry());
+                    if (!t.isEmpty()) {
+                        write(base.resolve("tags").resolve(file), t);
                         files++;
                     }
                 }
@@ -103,11 +82,11 @@ final class ExportTools {
         }
         if (all || what.contains("recipes")) {
             try {
-                RecipeTools.Src src = ClientThread.call(() -> RecipeTools.src(new Args(null)));
+                Regs.Recipes src = ClientThread.call(() -> Regs.recipes(Regs.Source.AUTO));
                 JsonArray arr = new JsonArray();
-                List<RecipeHolder<?>> list = src.manager().getRecipes().stream().sorted(Comparator.comparing(RecipeHolder::id)).toList();
-                for (RecipeHolder<?> h : list) arr.add(RecipeTools.recipeJson(h, src.regs(), true));
-                write(gson, dir.resolve("recipes.json"), arr);
+                src.manager().getRecipes().stream().sorted(Comparator.comparing(RecipeHolder::id))
+                        .forEach(h -> arr.add(RecipeJson.recipe(h, src.regs(), true)));
+                write(dir.resolve("recipes.json"), arr);
                 summary.addProperty("recipes", arr.size());
                 summary.addProperty("recipe_source", src.source());
             } catch (Exception ex) {
@@ -117,10 +96,26 @@ final class ExportTools {
         return ToolResult.json(summary);
     }
 
-    private static void write(com.google.gson.Gson gson, Path p, Object json) throws Exception {
+    private static <T> JsonArray entries(Registry<T> reg, RegistryAccess access) {
+        JsonArray arr = new JsonArray();
+        reg.holders().sorted(Comparator.comparing(h -> h.key().location()))
+                .forEach(h -> arr.add(RegistryJson.entry(reg, h, access, true, true, true)));
+        return arr;
+    }
+
+    private static <T> JsonObject tags(Registry<T> reg) {
+        JsonObject tags = new JsonObject();
+        reg.getTags().map(Pair::getSecond).sorted(Comparator.comparing(s -> s.key().location())).forEach(set ->
+                tags.add("#" + set.key().location(), Json.strings(set.stream().map(Holder::getRegisteredName).sorted().toList())));
+        return tags;
+    }
+
+    private static final Gson PRETTY = new GsonBuilder().disableHtmlEscaping().setPrettyPrinting().create();
+
+    private static void write(Path p, JsonElement json) throws Exception {
         Files.createDirectories(p.getParent());
         try (Writer w = Files.newBufferedWriter(p, StandardCharsets.UTF_8)) {
-            gson.toJson((com.google.gson.JsonElement) json, w);
+            PRETTY.toJson(json, w);
         }
     }
 }

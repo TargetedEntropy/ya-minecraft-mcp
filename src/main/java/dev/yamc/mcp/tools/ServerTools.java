@@ -23,7 +23,6 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.tags.TagKey;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.levelgen.structure.Structure;
@@ -43,22 +42,22 @@ final class ServerTools {
                 .desc("Singleplayer only. A loot table (blocks/..., entities/..., chests/..., gameplay/...) with a flattened list of possible item drops and tag drops, plus the full table JSON. Find ids with registry_entries registry=minecraft:loot_table.")
                 .schema(Schema.of().reqStr("id", "Loot table id, e.g. minecraft:chests/simple_dungeon or minecraft:blocks/diamond_ore.")
                         .bool("include_raw", "Include full table JSON (default true)."))
-                .kind(Tool.Kind.SERVER)
+                .gate(Gates.INTEGRATED_SERVER)
                 .handler(a -> ToolResult.json(lootTable(a))));
 
         r.add(Tool.builder("structure_info").title("Structure info")
                 .desc("Singleplayer only. A structure's biomes it can generate in, generation step, the structure sets that place it (spacing/separation/salt) and the full JSON.")
                 .schema(Schema.of().reqStr("id", "Structure id, e.g. minecraft:village_plains or minecraft:ancient_city.")
                         .bool("include_raw", "Include full structure JSON (default false)."))
-                .kind(Tool.Kind.SERVER)
+                .gate(Gates.INTEGRATED_SERVER)
                 .handler(a -> ToolResult.json(structureInfo(a))));
 
         r.add(Tool.builder("locate_structure").title("Locate structure")
-                .desc("Singleplayer only (like /locate structure). Nearest structure (id or #tag) to the player or given x/z in the player's current dimension.")
+                .desc("Singleplayer only (like /locate structure). Nearest structure (id or #tag) to the player or given x/z in the player's current dimension. The returned Y is approximate.")
                 .schema(Schema.of().reqStr("structure", "Structure id or #tag, e.g. minecraft:stronghold, #minecraft:village.")
                         .integer("x", "Search origin X (default player).").integer("z", "Search origin Z (default player).")
                         .integer("radius_chunks", "Search radius in chunks (default 100, max 300)."))
-                .kind(Tool.Kind.SERVER).anyThread()
+                .gate(Gates.INTEGRATED_SERVER).gate(Gates.LOCATE).anyThread()
                 .handler(ServerTools::locateStructure));
 
         r.add(Tool.builder("locate_biome").title("Locate biome")
@@ -66,19 +65,12 @@ final class ServerTools {
                 .schema(Schema.of().reqStr("biome", "Biome id or #tag, e.g. minecraft:cherry_grove, #minecraft:is_ocean.")
                         .integer("x", "Origin X (default player).").integer("z", "Origin Z (default player).")
                         .integer("radius", "Search radius in blocks (default 6400, max 12800)."))
-                .kind(Tool.Kind.SERVER).anyThread()
+                .gate(Gates.INTEGRATED_SERVER).gate(Gates.LOCATE).anyThread()
                 .handler(ServerTools::locateBiome));
     }
 
-    static MinecraftServer server() {
-        MinecraftServer s = Regs.server();
-        if (s == null) throw new ToolException("This tool needs the integrated server: it only works in singleplayer or when hosting a LAN world"
-                + " (server-only data like structures and loot tables is never sent to clients).");
-        return s;
-    }
-
     static JsonObject lootTable(Args a) {
-        MinecraftServer s = server();
+        MinecraftServer s = Regs.requireServer();
         ResourceLocation id = a.reqId("id");
         RegistryAccess access = s.reloadableRegistries().get();
         Registry<LootTable> reg = access.registryOrThrow(Registries.LOOT_TABLE);
@@ -119,7 +111,7 @@ final class ServerTools {
     }
 
     static JsonObject structureInfo(Args a) {
-        MinecraftServer s = server();
+        MinecraftServer s = Regs.requireServer();
         ResourceLocation id = a.reqId("id");
         RegistryAccess access = s.registryAccess();
         Registry<Structure> reg = access.registryOrThrow(Registries.STRUCTURE);
@@ -160,85 +152,59 @@ final class ServerTools {
         return o;
     }
 
-    record Origin(ResourceKey<Level> dim, BlockPos pos) {}
+    /** A search run on the server thread: returns the found position and the matched entry, or null. */
+    private interface Search {
+        Pair<BlockPos, ? extends Holder<?>> find(ServerLevel level, BlockPos origin);
+    }
 
-    static Origin origin(Args a) throws Exception {
-        return ClientThread.call(() -> {
+    /**
+     * Runs a locate search on the integrated server around the player (or x/z) in the player's dimension.
+     * {@code prepare} parses the arguments against the server registries, on the server thread.
+     */
+    private static ToolResult locate(Args a, String foundKey, java.util.function.Function<ServerLevel, Search> prepare) throws Exception {
+        MinecraftServer s = ClientThread.call(Regs::requireServer);
+        record Origin(ResourceKey<Level> dim, BlockPos pos) {}
+        Origin org = ClientThread.call(() -> {
             var p = Ctx.player();
             BlockPos b = p.blockPosition();
             return new Origin(p.level().dimension(), new BlockPos(a.integer("x", b.getX()), b.getY(), a.integer("z", b.getZ())));
         });
+        return ToolResult.json(ClientThread.callServer(s, () -> {
+            ServerLevel lvl = s.getLevel(org.dim());
+            if (lvl == null) throw new ToolException("Dimension not loaded on server.");
+            Search search = prepare.apply(lvl);
+            long t0 = System.currentTimeMillis();
+            var found = search.find(lvl, org.pos());
+            JsonObject o = new JsonObject();
+            o.addProperty("found", found != null);
+            o.addProperty("dimension", org.dim().location().toString());
+            o.add("origin", Json.pos(org.pos()));
+            if (found != null) {
+                o.addProperty(foundKey, found.getSecond().getRegisteredName());
+                o.add("pos", Json.pos(found.getFirst()));
+                double dx = found.getFirst().getX() - org.pos().getX(), dz = found.getFirst().getZ() - org.pos().getZ();
+                o.addProperty("horizontal_distance", Math.round(Math.sqrt(dx * dx + dz * dz)));
+            }
+            o.addProperty("search_ms", System.currentTimeMillis() - t0);
+            return o;
+        }, 90_000));
     }
 
     static ToolResult locateStructure(Args a) throws Exception {
-        MinecraftServer s = ClientThread.call(ServerTools::server);
         String spec = a.reqStr("structure");
         int radius = a.integer("radius_chunks", 100, 1, 300);
-        Origin org = origin(a);
-        JsonObject res = ClientThread.callServer(s, () -> {
-            ServerLevel lvl = s.getLevel(org.dim);
-            if (lvl == null) throw new ToolException("Dimension not loaded on server.");
-            Registry<Structure> reg = lvl.registryAccess().registryOrThrow(Registries.STRUCTURE);
-            HolderSet<Structure> set;
-            if (spec.startsWith("#")) {
-                set = reg.getTag(TagKey.create(Registries.STRUCTURE, Args.parseId(spec)))
-                        .orElseThrow(() -> new ToolException("Unknown structure tag " + spec));
-            } else {
-                ResourceLocation id = Args.parseId(spec);
-                var h = reg.getHolder(id).orElseThrow(() -> new ToolException("Unknown structure '" + id + "'."));
-                set = HolderSet.direct(h);
-            }
-            long t0 = System.currentTimeMillis();
-            Pair<BlockPos, Holder<Structure>> found = lvl.getChunkSource().getGenerator().findNearestMapStructure(lvl, set, org.pos, radius, false);
-            JsonObject o = new JsonObject();
-            o.addProperty("found", found != null);
-            o.addProperty("dimension", org.dim.location().toString());
-            o.add("origin", Json.pos(org.pos));
-            if (found != null) {
-                o.addProperty("structure", found.getSecond().getRegisteredName());
-                o.add("pos", Json.pos(found.getFirst()));
-                double dx = found.getFirst().getX() - org.pos.getX(), dz = found.getFirst().getZ() - org.pos.getZ();
-                o.addProperty("horizontal_distance", Math.round(Math.sqrt(dx * dx + dz * dz)));
-                o.addProperty("note", "Y is approximate (structure start height may differ).");
-            }
-            o.addProperty("search_ms", System.currentTimeMillis() - t0);
-            return o;
-        }, 90_000);
-        return ToolResult.json(res);
+        return locate(a, "structure", lvl -> {
+            HolderSet<Structure> set = Regs.holderSet(lvl.registryAccess().registryOrThrow(Registries.STRUCTURE), spec);
+            return (l, origin) -> l.getChunkSource().getGenerator().findNearestMapStructure(l, set, origin, radius, false);
+        });
     }
 
     static ToolResult locateBiome(Args a) throws Exception {
-        MinecraftServer s = ClientThread.call(ServerTools::server);
         String spec = a.reqStr("biome");
         int radius = a.integer("radius", 6400, 64, 12800);
-        Origin org = origin(a);
-        JsonObject res = ClientThread.callServer(s, () -> {
-            ServerLevel lvl = s.getLevel(org.dim);
-            if (lvl == null) throw new ToolException("Dimension not loaded on server.");
-            java.util.function.Predicate<Holder<Biome>> pred;
-            if (spec.startsWith("#")) {
-                TagKey<Biome> tag = TagKey.create(Registries.BIOME, Args.parseId(spec));
-                pred = h -> h.is(tag);
-            } else {
-                ResourceLocation id = Args.parseId(spec);
-                if (!lvl.registryAccess().registryOrThrow(Registries.BIOME).containsKey(id)) throw new ToolException("Unknown biome '" + id + "'.");
-                pred = h -> h.is(id);
-            }
-            long t0 = System.currentTimeMillis();
-            Pair<BlockPos, Holder<Biome>> found = lvl.findClosestBiome3d(pred, org.pos, radius, 32, 64);
-            JsonObject o = new JsonObject();
-            o.addProperty("found", found != null);
-            o.addProperty("dimension", org.dim.location().toString());
-            if (found != null) {
-                o.addProperty("biome", found.getSecond().getRegisteredName());
-                o.add("pos", Json.pos(found.getFirst()));
-                double dx = found.getFirst().getX() - org.pos.getX(), dz = found.getFirst().getZ() - org.pos.getZ();
-                o.addProperty("horizontal_distance", Math.round(Math.sqrt(dx * dx + dz * dz)));
-            }
-            o.addProperty("search_ms", System.currentTimeMillis() - t0);
-            return o;
-        }, 90_000);
-        return ToolResult.json(res);
+        return locate(a, "biome", lvl -> {
+            HolderSet<Biome> set = Regs.holderSet(lvl.registryAccess().registryOrThrow(Registries.BIOME), spec);
+            return (l, origin) -> l.findClosestBiome3d(set::contains, origin, radius, 32, 64);
+        });
     }
-
 }

@@ -12,8 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.Map;
 import java.util.stream.Stream;
 
 /**
@@ -23,16 +22,12 @@ import java.util.stream.Stream;
  * <pre>java -cp yamcmcp.jar dev.yamc.mcp.bridge.StdioBridge [--url URL] [--token-file FILE | --token TOKEN]</pre>
  * <ul>
  *   <li>Each JSON-RPC line on stdin is POSTed to the in-game server; the reply is written to stdout.</li>
- *   <li>The initialize reply gets {@code capabilities.experimental["claude/channel"]} added.</li>
  *   <li>After initialize, the bridge holds the server's GET SSE stream open and writes every pushed
  *       notification (notifications/claude/channel) to stdout, reconnecting if the game restarts.</li>
  * </ul>
  * stdout carries only JSON-RPC; diagnostics go to stderr.
  */
 public final class StdioBridge {
-    private static final Pattern ID = Pattern.compile("\"id\"\\s*:\\s*(-?\\d+|\"(?:[^\"\\\\]|\\\\.)*\")");
-    private static final Pattern METHOD = Pattern.compile("\"method\"\\s*:\\s*\"([^\"]+)\"");
-
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     private final PrintStream out;
     private final URI url;
@@ -101,11 +96,11 @@ public final class StdioBridge {
     }
 
     private void forward(String msg) {
-        Matcher mm = METHOD.matcher(msg);
-        String method = mm.find() ? mm.group(1) : null;
-        Matcher im = ID.matcher(msg);
-        String id = im.find() ? im.group(1) : null;
-        boolean isRequest = method != null && id != null;
+        Map<String, String> top = TopLevel.scalars(msg);
+        String method = top.get("method");
+        String id = top.get("id");
+        boolean isRequest = method != null && id != null && !id.equals("null");
+        if (method != null) method = TopLevel.unquote(method);
         try {
             HttpRequest r = req().timeout(Duration.ofMinutes(10))
                     .header("Content-Type", "application/json")
@@ -119,26 +114,13 @@ public final class StdioBridge {
                 if (isRequest) emit(error(id, "Unauthorized: wrong or missing token (see config/yamcmcp-token.txt; run /yamc connect in game)."));
                 return;
             }
-            String body = resp.body();
-            if ("initialize".equals(method) && code == 200) {
-                body = addChannelCapability(body);
-                startStream();
-            }
-            emit(body);
+            if ("initialize".equals(method) && code == 200) startStream();
+            emit(resp.body());
         } catch (ConnectException e) {
             if (isRequest) emit(error(id, "Minecraft is not running or the YAMC MCP mod is not listening on " + url + ". Start the game, then reconnect with /mcp."));
         } catch (Exception e) {
             if (isRequest) emit(error(id, "Bridge error: " + e));
         }
-    }
-
-    static String addChannelCapability(String body) {
-        String exp = "\"experimental\":{\"claude/channel\":{}}";
-        int i = body.indexOf("\"capabilities\":{");
-        if (i < 0) return body;
-        int at = i + "\"capabilities\":{".length();
-        boolean empty = body.charAt(at) == '}';
-        return body.substring(0, at) + exp + (empty ? "" : ",") + body.substring(at);
     }
 
     private static String error(String id, String message) {

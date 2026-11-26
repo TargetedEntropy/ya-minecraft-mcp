@@ -10,30 +10,70 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.item.Item;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.GameType;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.client.event.ClientChatReceivedEvent;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
 
+import dev.yamc.mcp.util.Inventories;
+import dev.yamc.mcp.util.Json;
+
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 
 /** Watches the client every tick and records notable changes into the {@link EventLog}. */
 public final class GameWatcher {
-    private float lastHealth = -1;
-    private String lastDim;
-    private String lastBiome;
-    private int lastLevel = -1;
-    private GameType lastMode;
-    private Set<Holder<MobEffect>> lastEffects = new HashSet<>();
-    private Map<Item, Integer> lastInv;
-    private boolean wasDead;
+    /**
+     * Samples one value every {@code every} ticks and reports changes. The first sample after a
+     * reset (and null samples) only establish the baseline.
+     */
+    private record Watch<T>(int every, Function<LocalPlayer, T> sample, Change<T> onChange, AtomicReference<T> last) {
+        interface Change<T> {
+            void changed(T before, T now, LocalPlayer p);
+        }
+
+        static <T> Watch<T> of(int every, Function<LocalPlayer, T> sample, Change<T> onChange) {
+            return new Watch<>(every, sample, onChange, new AtomicReference<>());
+        }
+
+        void tick(LocalPlayer p, int tick) {
+            if (tick % every != 0) return;
+            T now = sample.apply(p);
+            T before = last.getAndSet(now);
+            if (before != null && now != null && !before.equals(now)) onChange.changed(before, now, p);
+        }
+
+        void reset() {
+            last.set(null);
+        }
+    }
+
+    private final List<Watch<?>> watches = List.of(
+            Watch.of(1, LocalPlayer::getHealth, GameWatcher::health),
+            Watch.of(1, LocalPlayer::isDeadOrDying, (was, dead, p) -> {
+                if (dead) death(p);
+            }),
+            Watch.of(1, p -> p.level().dimension().location().toString(), (from, to, p) -> emit(GameEvent.DIMENSION_CHANGE, "from", from, "to", to)),
+            Watch.of(1, p -> p.experienceLevel, (from, to, p) -> {
+                if (to > from) {
+                    JsonObject d = new JsonObject();
+                    d.addProperty("level", to);
+                    EventLog.add(GameEvent.LEVEL_UP, d);
+                }
+            }),
+            Watch.of(1, p -> Minecraft.getInstance().gameMode == null ? null : Minecraft.getInstance().gameMode.getPlayerMode(),
+                    (from, to, p) -> emit(GameEvent.GAMEMODE_CHANGE, "from", from.getName(), "to", to.getName())),
+            Watch.of(20, p -> p.level().getBiome(p.blockPosition()).getRegisteredName(), (from, to, p) -> emit(GameEvent.BIOME_CHANGE, "from", from, "to", to)),
+            Watch.of(5, GameWatcher::effects, GameWatcher::effectsChanged),
+            Watch.of(10, p -> Inventories.counts(p.getInventory(), true), GameWatcher::inventoryChanged));
+
     private int tick;
     private final Map<Long, Long> recentChat = new HashMap<>();
 
@@ -43,105 +83,58 @@ public final class GameWatcher {
         LocalPlayer p = mc.player;
         Ticker.tick();
         if (p == null || mc.level == null) {
-            lastHealth = -1;
-            lastInv = null;
+            resetWatches();
             return;
         }
         tick++;
-        float h = p.getHealth();
-        if (lastHealth >= 0 && Math.abs(h - lastHealth) >= 0.5f) {
-            JsonObject d = new JsonObject();
-            d.addProperty("health", h);
-            d.addProperty("delta", h - lastHealth);
-            if (h < lastHealth) {
-                DamageSource src = p.getLastDamageSource();
-                if (src != null) {
-                    d.addProperty("damage_type", src.typeHolder().getRegisteredName());
-                    if (src.getEntity() != null) d.addProperty("attacker", src.getEntity().getName().getString());
-                }
-            }
-            EventLog.add(h < lastHealth ? "damage" : "heal", d);
-        }
-        lastHealth = h;
-        boolean dead = p.isDeadOrDying();
-        if (dead && !wasDead) {
-            JsonObject d = new JsonObject();
-            d.add("pos", dev.yamc.mcp.util.Json.pos(p.blockPosition()));
-            d.addProperty("dimension", p.level().dimension().location().toString());
-            EventLog.add("death", d);
-        }
-        wasDead = dead;
-
-        String dim = p.level().dimension().location().toString();
-        if (!dim.equals(lastDim)) {
-            if (lastDim != null) {
-                JsonObject d = new JsonObject();
-                d.addProperty("from", lastDim);
-                d.addProperty("to", dim);
-                EventLog.add("dimension_change", d);
-            }
-            lastDim = dim;
-        }
-        if (p.experienceLevel != lastLevel) {
-            if (lastLevel >= 0 && p.experienceLevel > lastLevel) {
-                JsonObject d = new JsonObject();
-                d.addProperty("level", p.experienceLevel);
-                EventLog.add("level_up", d);
-            }
-            lastLevel = p.experienceLevel;
-        }
-        GameType mode = mc.gameMode == null ? null : mc.gameMode.getPlayerMode();
-        if (mode != lastMode) {
-            if (lastMode != null && mode != null) {
-                JsonObject d = new JsonObject();
-                d.addProperty("from", lastMode.getName());
-                d.addProperty("to", mode.getName());
-                EventLog.add("gamemode_change", d);
-            }
-            lastMode = mode;
-        }
-        if (tick % 20 == 0) {
-            String biome = p.level().getBiome(p.blockPosition()).getRegisteredName();
-            if (!biome.equals(lastBiome)) {
-                if (lastBiome != null) {
-                    JsonObject d = new JsonObject();
-                    d.addProperty("from", lastBiome);
-                    d.addProperty("to", biome);
-                    EventLog.add("biome_change", d);
-                }
-                lastBiome = biome;
-            }
-        }
-        if (tick % 5 == 0) {
-            Set<Holder<MobEffect>> now = new HashSet<>();
-            for (MobEffectInstance i : p.getActiveEffects()) now.add(i.getEffect());
-            for (Holder<MobEffect> h2 : now) if (!lastEffects.contains(h2)) effectEvent("effect_added", h2, p.getEffect(h2));
-            for (Holder<MobEffect> h2 : lastEffects) if (!now.contains(h2)) effectEvent("effect_removed", h2, null);
-            lastEffects = now;
-        }
-        if (tick % 10 == 0) {
-            Map<Item, Integer> inv = new HashMap<>();
-            for (ItemStack s : p.getInventory().items) if (!s.isEmpty()) inv.merge(s.getItem(), s.getCount(), Integer::sum);
-            for (ItemStack s : p.getInventory().armor) if (!s.isEmpty()) inv.merge(s.getItem(), s.getCount(), Integer::sum);
-            for (ItemStack s : p.getInventory().offhand) if (!s.isEmpty()) inv.merge(s.getItem(), s.getCount(), Integer::sum);
-            if (lastInv != null) {
-                Set<Item> keys = new HashSet<>(inv.keySet());
-                keys.addAll(lastInv.keySet());
-                for (Item it : keys) {
-                    int delta = inv.getOrDefault(it, 0) - lastInv.getOrDefault(it, 0);
-                    if (delta == 0) continue;
-                    JsonObject d = new JsonObject();
-                    d.addProperty("item", BuiltInRegistries.ITEM.getKey(it).toString());
-                    d.addProperty("delta", delta);
-                    d.addProperty("now", inv.getOrDefault(it, 0));
-                    EventLog.add(delta > 0 ? "item_gained" : "item_lost", d);
-                }
-            }
-            lastInv = inv;
-        }
+        for (Watch<?> w : watches) w.tick(p, tick);
     }
 
-    private static void effectEvent(String type, Holder<MobEffect> effect, MobEffectInstance inst) {
+    private void resetWatches() {
+        watches.forEach(Watch::reset);
+    }
+
+    private static void emit(GameEvent type, String k1, String v1, String k2, String v2) {
+        JsonObject d = new JsonObject();
+        d.addProperty(k1, v1);
+        d.addProperty(k2, v2);
+        EventLog.add(type, d);
+    }
+
+    private static void health(float before, float h, LocalPlayer p) {
+        if (Math.abs(h - before) < 0.5f) return;
+        JsonObject d = new JsonObject();
+        d.addProperty("health", h);
+        d.addProperty("delta", h - before);
+        if (h < before) {
+            DamageSource src = p.getLastDamageSource();
+            if (src != null) {
+                d.addProperty("damage_type", src.typeHolder().getRegisteredName());
+                if (src.getEntity() != null) d.addProperty("attacker", src.getEntity().getName().getString());
+            }
+        }
+        EventLog.add(h < before ? GameEvent.DAMAGE : GameEvent.HEAL, d);
+    }
+
+    private static void death(LocalPlayer p) {
+        JsonObject d = new JsonObject();
+        d.add("pos", Json.pos(p.blockPosition()));
+        d.addProperty("dimension", p.level().dimension().location().toString());
+        EventLog.add(GameEvent.DEATH, d);
+    }
+
+    private static Set<Holder<MobEffect>> effects(LocalPlayer p) {
+        Set<Holder<MobEffect>> now = new HashSet<>();
+        for (MobEffectInstance i : p.getActiveEffects()) now.add(i.getEffect());
+        return now;
+    }
+
+    private static void effectsChanged(Set<Holder<MobEffect>> before, Set<Holder<MobEffect>> now, LocalPlayer p) {
+        for (Holder<MobEffect> h : now) if (!before.contains(h)) effectEvent(GameEvent.EFFECT_ADDED, h, p.getEffect(h));
+        for (Holder<MobEffect> h : before) if (!now.contains(h)) effectEvent(GameEvent.EFFECT_REMOVED, h, null);
+    }
+
+    private static void effectEvent(GameEvent type, Holder<MobEffect> effect, MobEffectInstance inst) {
         JsonObject d = new JsonObject();
         d.addProperty("effect", effect.getRegisteredName());
         if (inst != null) {
@@ -151,20 +144,34 @@ public final class GameWatcher {
         EventLog.add(type, d);
     }
 
+    private static void inventoryChanged(Map<Item, Integer> before, Map<Item, Integer> inv, LocalPlayer p) {
+        Set<Item> keys = new HashSet<>(inv.keySet());
+        keys.addAll(before.keySet());
+        for (Item it : keys) {
+            int delta = inv.getOrDefault(it, 0) - before.getOrDefault(it, 0);
+            if (delta == 0) continue;
+            JsonObject d = new JsonObject();
+            d.addProperty("item", BuiltInRegistries.ITEM.getKey(it).toString());
+            d.addProperty("delta", delta);
+            d.addProperty("now", inv.getOrDefault(it, 0));
+            EventLog.add(delta > 0 ? GameEvent.ITEM_GAINED : GameEvent.ITEM_LOST, d);
+        }
+    }
+
     @SubscribeEvent
     public void onChat(ClientChatReceivedEvent e) {
         String text = e.getMessage().getString();
         JsonObject d = new JsonObject();
         d.addProperty("text", text);
-        String type = "chat";
+        GameEvent type = GameEvent.CHAT;
         if (e instanceof ClientChatReceivedEvent.System sys) {
-            type = sys.isOverlay() ? "actionbar" : "system_message";
+            type = sys.isOverlay() ? GameEvent.ACTIONBAR : GameEvent.SYSTEM_MESSAGE;
         } else if (e.getSender() != null && !Objects.equals(e.getSender(), net.minecraft.Util.NIL_UUID)) {
             d.addProperty("sender_uuid", e.getSender().toString());
             var info = Minecraft.getInstance().getConnection() == null ? null : Minecraft.getInstance().getConnection().getPlayerInfo(e.getSender());
             if (info != null) d.addProperty("sender", info.getProfile().getName());
         }
-        if (type.equals("actionbar")) {
+        if (type == GameEvent.ACTIONBAR) {
             long key = text.hashCode();
             long now = System.currentTimeMillis();
             Long prev = recentChat.put(key, now);
@@ -180,14 +187,14 @@ public final class GameWatcher {
         JsonObject d = new JsonObject();
         d.addProperty("screen", e.getNewScreen().getClass().getSimpleName());
         d.addProperty("title", e.getNewScreen().getTitle().getString());
-        EventLog.add(e.getNewScreen() instanceof DeathScreen ? "death_screen" : "screen_open", d);
+        EventLog.add(e.getNewScreen() instanceof DeathScreen ? GameEvent.DEATH_SCREEN : GameEvent.SCREEN_OPEN, d);
     }
 
     @SubscribeEvent
     public void onScreenClose(ScreenEvent.Closing e) {
         JsonObject d = new JsonObject();
         d.addProperty("screen", e.getScreen().getClass().getSimpleName());
-        EventLog.add("screen_close", d);
+        EventLog.add(GameEvent.SCREEN_CLOSE, d);
     }
 
     @SubscribeEvent
@@ -196,16 +203,13 @@ public final class GameWatcher {
         Minecraft mc = Minecraft.getInstance();
         d.addProperty("singleplayer", mc.hasSingleplayerServer());
         if (mc.getCurrentServer() != null) d.addProperty("server", mc.getCurrentServer().ip);
-        EventLog.add("join_world", d);
-        lastDim = null;
-        lastBiome = null;
-        lastLevel = -1;
-        lastMode = null;
+        EventLog.add(GameEvent.JOIN_WORLD, d);
+        resetWatches();
     }
 
     @SubscribeEvent
     public void onLogout(ClientPlayerNetworkEvent.LoggingOut e) {
-        EventLog.add("leave_world", new JsonObject());
+        EventLog.add(GameEvent.LEAVE_WORLD, new JsonObject());
         Markers.clear();
     }
 }

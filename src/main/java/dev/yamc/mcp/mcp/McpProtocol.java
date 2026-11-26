@@ -59,6 +59,11 @@ public final class McpProtocol {
         JsonObject toolsCap = new JsonObject();
         toolsCap.addProperty("listChanged", false);
         caps.add("tools", toolsCap);
+        // Claude Code channel: pushed events (notifications/claude/channel) appear in the conversation when the
+        // server is loaded as a channel through the stdio bridge. Other clients ignore unknown experimental keys.
+        JsonObject experimental = new JsonObject();
+        experimental.add("claude/channel", new JsonObject());
+        caps.add("experimental", experimental);
         r.add("capabilities", caps);
         JsonObject info = new JsonObject();
         info.addProperty("name", "yamc-mcp");
@@ -79,7 +84,7 @@ public final class McpProtocol {
             o.add("inputSchema", t.inputSchema());
             JsonObject ann = new JsonObject();
             ann.addProperty("title", t.title());
-            ann.addProperty("readOnlyHint", t.kind() != Tool.Kind.ACTION);
+            ann.addProperty("readOnlyHint", t.readOnly());
             ann.addProperty("destructiveHint", false);
             ann.addProperty("openWorldHint", false);
             o.add("annotations", ann);
@@ -97,7 +102,7 @@ public final class McpProtocol {
         if (tool == null) throw new RpcError(-32602, "Unknown tool: " + name);
         Args args = new Args(params.has("arguments") && params.get("arguments").isJsonObject() ? params.getAsJsonObject("arguments") : null);
         try {
-            String gate = tools.gateReason(tool);
+            String gate = tool.gateReason();
             if (gate != null) return ToolResult.text(gate, true).toJson();
             ToolResult res = tool.thread() == Tool.Thread.CLIENT ? ClientThread.call(() -> tool.handler().call(args)) : tool.handler().call(args);
             return res.toJson();

@@ -6,6 +6,7 @@ import dev.yamc.mcp.client.Markers;
 import dev.yamc.mcp.mcp.McpHttpServer;
 import dev.yamc.mcp.mcp.McpProtocol;
 import dev.yamc.mcp.mcp.ToolRegistry;
+import dev.yamc.mcp.push.PushNotifier;
 import dev.yamc.mcp.tools.Tools;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
@@ -47,6 +48,7 @@ public final class YamcMcp {
         container.registerConfig(ModConfig.Type.CLIENT, Config.SPEC);
         modBus.addListener(FMLClientSetupEvent.class, e -> e.enqueueWork(YamcMcp::startServer));
         NeoForge.EVENT_BUS.register(new GameWatcher());
+        PushNotifier.install();
         NeoForge.EVENT_BUS.register(new Markers());
         if (dev.yamc.mcp.client.DevAutoWorld.enabled()) NeoForge.EVENT_BUS.register(new dev.yamc.mcp.client.DevAutoWorld());
         NeoForge.EVENT_BUS.addListener(RegisterClientCommandsEvent.class, YamcMcp::registerCommands);

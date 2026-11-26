@@ -21,9 +21,13 @@ public final class Tools {
         ToolRegistry r = new ToolRegistry();
         PlayerTools.register(r);
         WorldTools.register(r);
+        BlockTools.register(r);
+        EntityTools.register(r);
+        ScreenTools.register(r);
         RegistryTools.register(r);
         RecipeTools.register(r);
         InfoTools.register(r);
+        EventTools.register(r);
         ServerTools.register(r);
         ActionTools.register(r);
         ExportTools.register(r);

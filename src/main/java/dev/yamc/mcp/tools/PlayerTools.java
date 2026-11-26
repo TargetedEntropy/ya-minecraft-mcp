@@ -7,7 +7,7 @@ import dev.yamc.mcp.mcp.Tool;
 import dev.yamc.mcp.mcp.ToolRegistry;
 import dev.yamc.mcp.mcp.ToolResult;
 import dev.yamc.mcp.util.Json;
-import dev.yamc.mcp.util.Stacks;
+import dev.yamc.mcp.json.Stacks;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.effect.MobEffectInstance;

@@ -2,8 +2,11 @@ package dev.yamc.mcp.tools;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import dev.yamc.mcp.json.RecipeJson;
 import dev.yamc.mcp.mcp.Args;
 import dev.yamc.mcp.mcp.ToolException;
+import dev.yamc.mcp.util.Inventories;
+import dev.yamc.mcp.util.Regs;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -20,91 +23,29 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 
-/** Recursive crafting planner. */
+/** One recursive crafting plan: the working inventory and what the plan has used, crafted and is missing. */
 final class CraftPlanner {
-    private final Map<Item, List<RecipeHolder<?>>> byOutput;
+    private static final int MAX_NODES = 2000;
+
+    private final RecipeGraph graph;
     private final Map<Item, Integer> inv;
-    private final RecipeTools.Src src;
     private final int maxDepth;
+    private final Set<String> excludeNamespaces;
+    private final Set<Item> raw;
+
     private final Map<String, Integer> missing = new TreeMap<>();
     private final Map<String, Integer> fromInventory = new TreeMap<>();
     private final List<JsonObject> steps = new ArrayList<>();
     private final Map<String, Integer> leftovers = new TreeMap<>();
+    private final Map<String, Integer> skippedReversible = new TreeMap<>();
     private int nodes;
 
-    /** Recipe index for one recipe set + type selection, cached because big packs have 100k+ recipes. */
-    private static final class Index {
-        final Map<Item, List<RecipeHolder<?>>> byOutput = new HashMap<>();
-        /** item -> every item that appears as an ingredient option in a recipe producing it */
-        final Map<Item, Set<Item>> inputsOf = new HashMap<>();
-    }
-
-    private static Object cacheKey;
-    private static Index cacheIndex;
-
-    private static synchronized Index index(RecipeTools.Src src, Set<String> types) {
-        var recipes = src.manager().getRecipes();
-        List<Object> key = List.of(System.identityHashCode(recipes), recipes.size(), new java.util.TreeSet<>(types), src.source());
-        if (key.equals(cacheKey)) return cacheIndex;
-        Index idx = new Index();
-        for (RecipeHolder<?> h : recipes) {
-            Recipe<?> r = h.value();
-            if (!types.contains(RecipeTools.typeId(r)) || r.isSpecial()) continue;
-            ItemStack res = RecipeTools.safeResult(r, src.regs());
-            if (res.isEmpty() || r.getIngredients().stream().allMatch(Ingredient::isEmpty)) continue;
-            idx.byOutput.computeIfAbsent(res.getItem(), k -> new ArrayList<>()).add(h);
-            Set<Item> ins = idx.inputsOf.computeIfAbsent(res.getItem(), k -> new HashSet<>());
-            for (Ingredient ing : r.getIngredients()) {
-                if (ing.isEmpty()) continue;
-                ItemStack[] opts = ing.getItems();
-                if (opts.length > 16) continue; // broad tag ingredients don't indicate a storage/compression pair
-                for (ItemStack o : opts) ins.add(o.getItem());
-            }
-        }
-        // Deterministic preference: vanilla namespace first, then by id
-        for (List<RecipeHolder<?>> l : idx.byOutput.values())
-            l.sort((x, y) -> {
-                int a = x.id().getNamespace().equals("minecraft") ? 0 : 1, b = y.id().getNamespace().equals("minecraft") ? 0 : 1;
-                return a != b ? Integer.compare(a, b) : x.id().compareTo(y.id());
-            });
-        cacheKey = key;
-        cacheIndex = idx;
-        return idx;
-    }
-
-    private final Set<String> excludeNamespaces;
-    private final java.util.function.Predicate<Item> raw;
-    private final Map<String, Integer> skippedReversible = new TreeMap<>();
-
-    private CraftPlanner(RecipeTools.Src src, Set<String> types, Map<Item, Integer> inv, int maxDepth,
-                         Set<String> excludeNamespaces, java.util.function.Predicate<Item> raw) {
-        this.src = src;
+    private CraftPlanner(RecipeGraph graph, Map<Item, Integer> inv, int maxDepth, Set<String> excludeNamespaces, Set<Item> raw) {
+        this.graph = graph;
         this.inv = inv;
         this.maxDepth = maxDepth;
         this.excludeNamespaces = excludeNamespaces;
         this.raw = raw;
-        this.idx = index(src, types);
-        this.byOutput = idx.byOutput;
-    }
-
-    private final Index idx;
-
-    /**
-     * A recipe making X is "reversible" when one of its ingredients Y can itself be crafted from X
-     * (storage blocks, nuggets, compression/decompression ladders). Using such recipes for intermediate
-     * steps makes the planner climb compression tiers instead of treating X as a raw material.
-     */
-    private boolean reversible(RecipeHolder<?> h, Item out) {
-        for (Ingredient ing : h.value().getIngredients()) {
-            if (ing.isEmpty()) continue;
-            ItemStack[] opts = ing.getItems();
-            if (opts.length > 16) continue;
-            for (ItemStack o : opts) {
-                Set<Item> ins = idx.inputsOf.get(o.getItem());
-                if (ins != null && ins.contains(out)) return true;
-            }
-        }
-        return false;
     }
 
     /** True if every ingredient of the recipe (for the given number of crafts) is already in the inventory. */
@@ -121,7 +62,7 @@ final class CraftPlanner {
         return true;
     }
 
-    static JsonObject plan(Args a, RecipeTools.Src src) {
+    static JsonObject plan(Args a, Regs.Recipes src) {
         Item target = Ctx.item(a.reqStr("item"));
         int count = a.integer("count", 1, 1, 100000);
         List<String> types = a.strList("recipe_types");
@@ -129,21 +70,12 @@ final class CraftPlanner {
         if (types.isEmpty()) typeSet.add("minecraft:crafting");
         else for (String t : types) typeSet.add(Args.parseId(t).toString());
         Map<Item, Integer> inv = a.bool("use_inventory", true) && Ctx.mc().player != null
-                ? RecipeTools.inventoryCounts(Ctx.player()) : new HashMap<>();
-        Set<String> exNs = new HashSet<>(a.strList("exclude_namespaces"));
-        List<java.util.function.Predicate<Item>> rawPreds = new ArrayList<>();
-        for (String spec : a.strList("raw_materials")) {
-            if (spec.startsWith("#")) {
-                var tag = net.minecraft.tags.TagKey.create(net.minecraft.core.registries.Registries.ITEM, Args.parseId(spec));
-                rawPreds.add(it -> it.builtInRegistryHolder().is(tag));
-            } else {
-                Item it = Ctx.item(spec);
-                rawPreds.add(x -> x == it);
-            }
-        }
-        CraftPlanner p = new CraftPlanner(src, typeSet, inv, a.integer("max_depth", 8, 1, 20), exNs,
-                it -> rawPreds.stream().anyMatch(pr -> pr.test(it)));
-        if (!p.byOutput.containsKey(target)) {
+                ? Inventories.counts(Ctx.player().getInventory(), false) : new HashMap<>();
+        Set<Item> raw = new HashSet<>();
+        for (String spec : a.strList("raw_materials")) raw.addAll(RecipeTools.items(spec));
+        RecipeGraph graph = RecipeGraph.of(src, typeSet);
+        CraftPlanner p = new CraftPlanner(graph, inv, a.integer("max_depth", 8, 1, 20), new HashSet<>(a.strList("exclude_namespaces")), raw);
+        if (!graph.craftable(target)) {
             throw new ToolException("No " + typeSet + " recipe produces " + BuiltInRegistries.ITEM.getKey(target)
                     + ". Try recipes_search output=<item> to see other recipe types, then pass recipe_types.");
         }
@@ -178,7 +110,7 @@ final class CraftPlanner {
         JsonObject node = new JsonObject();
         node.addProperty("item", id);
         node.addProperty("needed", needed);
-        if (++nodes > 2000) {
+        if (++nodes > MAX_NODES) {
             node.addProperty("truncated", true);
             missing.merge(id, needed, Integer::sum);
             return node;
@@ -195,14 +127,14 @@ final class CraftPlanner {
         }
         if (needed == 0) return node;
         List<RecipeHolder<?>> recipes = candidates(item, needed, root);
-        if (recipes.isEmpty() || depth >= maxDepth || path.contains(item) || (!root && raw.test(item))) {
+        if (recipes.isEmpty() || depth >= maxDepth || path.contains(item) || (!root && raw.contains(item))) {
             node.addProperty("missing", needed);
             missing.merge(id, needed, Integer::sum);
             return node;
         }
         RecipeHolder<?> chosen = choose(recipes, path, item);
         Recipe<?> r = chosen.value();
-        int per = Math.max(1, RecipeTools.safeResult(r, src.regs()).getCount());
+        int per = graph.yield(chosen);
         int crafts = (needed + per - 1) / per;
         node.addProperty("recipe", chosen.id().toString());
         node.addProperty("crafts", crafts);
@@ -211,7 +143,7 @@ final class CraftPlanner {
         Map<String, Integer> qty = new LinkedHashMap<>();
         for (Ingredient ing : r.getIngredients()) {
             if (ing.isEmpty()) continue;
-            String sig = RecipeTools.signature(ing);
+            String sig = RecipeJson.signature(ing);
             ingBySig.putIfAbsent(sig, ing);
             qty.merge(sig, 1, Integer::sum);
         }
@@ -226,7 +158,7 @@ final class CraftPlanner {
         node.add("ingredients", children);
         JsonObject step = new JsonObject();
         step.addProperty("recipe", chosen.id().toString());
-        step.addProperty("type", RecipeTools.typeId(r));
+        step.addProperty("type", RecipeJson.type(r));
         step.addProperty("output", id);
         step.addProperty("crafts", crafts);
         step.addProperty("produces", crafts * per);
@@ -241,14 +173,12 @@ final class CraftPlanner {
 
     /** Usable recipes for an item: excluded namespaces removed; reversible ones only at the root or when the inventory covers them. */
     private List<RecipeHolder<?>> candidates(Item item, int needed, boolean root) {
-        List<RecipeHolder<?>> all = byOutput.get(item);
         List<RecipeHolder<?>> out = new ArrayList<>();
-        if (all == null) return out;
         int skipped = 0;
-        for (RecipeHolder<?> h : all) {
+        for (RecipeHolder<?> h : graph.recipesFor(item)) {
             if (excludeNamespaces.contains(h.id().getNamespace())) continue;
-            if (!root && reversible(h, item)) {
-                int per = Math.max(1, RecipeTools.safeResult(h.value(), src.regs()).getCount());
+            if (!root && graph.reversible(h, item)) {
+                int per = graph.yield(h);
                 if (!coveredByInventory(h, (needed + per - 1) / per)) {
                     skipped++;
                     continue;
@@ -260,7 +190,11 @@ final class CraftPlanner {
         return out;
     }
 
-    /** Prefer a recipe whose ingredients are all in the inventory, then one without cyclic ingredients. */
+    /**
+     * Prefer a recipe whose ingredients are in the inventory, and avoid ones with an ingredient that only cycles
+     * back into the current path. The reversible filter in {@link #candidates} only catches two-step cycles
+     * (X from Y from X); this also covers longer ones.
+     */
     private RecipeHolder<?> choose(List<RecipeHolder<?>> recipes, Set<Item> path, Item item) {
         RecipeHolder<?> best = recipes.get(0);
         int bestScore = Integer.MIN_VALUE;
@@ -293,7 +227,7 @@ final class CraftPlanner {
             if (path.contains(it)) continue;
             if (inv.getOrDefault(it, 0) >= amount) return it;
             if (any == null) any = it;
-            if (craftable == null && byOutput.containsKey(it)) craftable = it;
+            if (craftable == null && graph.craftable(it)) craftable = it;
         }
         for (ItemStack s : opts) if (inv.getOrDefault(s.getItem(), 0) > 0 && !path.contains(s.getItem())) return s.getItem();
         if (craftable != null) return craftable;

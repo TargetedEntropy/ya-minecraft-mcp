@@ -15,9 +15,9 @@ public final class ChatHistory {
 
     private ChatHistory() {}
 
-    public static synchronized void add(String type, JsonObject data) {
-        if (type.equals("actionbar")) return;
-        LINES.addLast(new Line(System.currentTimeMillis(), type, data));
+    public static synchronized void add(GameEvent type, JsonObject data) {
+        if (type == GameEvent.ACTIONBAR) return;
+        LINES.addLast(new Line(System.currentTimeMillis(), type.id, data));
         while (LINES.size() > MAX) LINES.removeFirst();
     }
 

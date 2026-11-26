@@ -7,16 +7,18 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 /** Thread-safe ring buffer of game events with monotonically increasing sequence numbers. */
 public final class EventLog {
-    public record Event(long seq, long time, String type, JsonObject data) {
+    public record Event(long seq, long time, GameEvent type, JsonObject data) {
         public JsonObject toJson() {
             JsonObject o = new JsonObject();
             o.addProperty("seq", seq);
             o.addProperty("time", time);
-            o.addProperty("type", type);
+            o.addProperty("type", type.id);
             for (var e : data.entrySet()) o.add(e.getKey(), e.getValue());
             return o;
         }
@@ -25,10 +27,16 @@ public final class EventLog {
     private static final ArrayDeque<Event> EVENTS = new ArrayDeque<>();
     private static long seq;
     private static long lastPolled;
+    private static final List<Consumer<Event>> LISTENERS = new CopyOnWriteArrayList<>();
 
     private EventLog() {}
 
-    public static void add(String type, JsonObject data) {
+    /** Calls the listener (on the recording thread) for every event added from now on. */
+    public static void subscribe(Consumer<Event> listener) {
+        LISTENERS.add(listener);
+    }
+
+    public static void add(GameEvent type, JsonObject data) {
         Event ev;
         synchronized (EVENTS) {
             ev = new Event(++seq, System.currentTimeMillis(), type, data);
@@ -37,7 +45,7 @@ public final class EventLog {
             while (EVENTS.size() > max) EVENTS.removeFirst();
             EVENTS.notifyAll();
         }
-        PushNotifier.onEvent(ev);
+        for (Consumer<Event> l : LISTENERS) l.accept(ev);
     }
 
     public static long latest() {
@@ -52,7 +60,7 @@ public final class EventLog {
         }
     }
 
-    public static List<Event> since(long after, Set<String> types, int limit, boolean markPolled) {
+    public static List<Event> since(long after, Set<GameEvent> types, int limit, boolean markPolled) {
         synchronized (EVENTS) {
             List<Event> out = new ArrayList<>();
             for (Event e : EVENTS) {

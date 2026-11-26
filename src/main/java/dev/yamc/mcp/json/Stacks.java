@@ -1,4 +1,6 @@
-package dev.yamc.mcp.util;
+package dev.yamc.mcp.json;
+
+import dev.yamc.mcp.util.Json;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;

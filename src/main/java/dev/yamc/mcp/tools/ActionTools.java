@@ -6,11 +6,10 @@ import dev.yamc.mcp.client.Markers;
 import dev.yamc.mcp.client.Ticker;
 import dev.yamc.mcp.mcp.Args;
 import dev.yamc.mcp.mcp.Schema;
-import dev.yamc.mcp.mcp.Tool;
 import dev.yamc.mcp.mcp.ToolException;
 import dev.yamc.mcp.mcp.ToolRegistry;
 import dev.yamc.mcp.mcp.ToolResult;
-import dev.yamc.mcp.util.ClientThread;
+import dev.yamc.mcp.json.Stacks;
 import dev.yamc.mcp.util.Json;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.KeyMapping;
@@ -22,6 +21,7 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.commands.arguments.EntityAnchorArgument;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
@@ -34,21 +34,18 @@ import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.Callable;
 
 /** Tools that change game state. Gated by config tools.enableActions. */
 final class ActionTools {
     private ActionTools() {}
 
     static void register(ToolRegistry r) {
-        r.add(Tool.builder("send_chat").title("Send chat message")
+        r.add(Gates.action("send_chat").title("Send chat message")
                 .desc("Send a chat message as the player (visible to everyone on the server). Messages starting with '/' are run as commands. Returns 'seq' for wait_for_event.")
                 .schema(Schema.of().reqStr("message", "Text to send."))
-                .kind(Tool.Kind.ACTION)
                 .handler(a -> {
                     var c = conn();
                     String m = a.reqStr("message");
@@ -58,10 +55,9 @@ final class ActionTools {
                     return seqResult("sent", seq);
                 }));
 
-        r.add(Tool.builder("run_command").title("Run command")
+        r.add(Gates.action("run_command").title("Run command")
                 .desc("Run a command as the player (with or without leading '/'), e.g. 'time set day' in singleplayer with cheats. Client-side mod commands are handled too. Output arrives as system_message events: use wait_for_event with the returned seq.")
                 .schema(Schema.of().reqStr("command", "Command text."))
-                .kind(Tool.Kind.ACTION)
                 .handler(a -> {
                     var c = conn();
                     String cmd = a.reqStr("command");
@@ -71,11 +67,10 @@ final class ActionTools {
                     return seqResult("command sent", seq);
                 }));
 
-        r.add(Tool.builder("look_at").title("Look at")
+        r.add(Gates.action("look_at").title("Look at")
                 .desc("Turn the player's view: toward a block position (x,y,z, looks at block center), toward an entity (entity_id), or to absolute yaw/pitch (yaw 0=south, 90=west, 180=north, -90=east; pitch -90=up, 90=down).")
                 .schema(Schema.of().number("x", "Target X").number("y", "Target Y").number("z", "Target Z")
                         .integer("entity_id", "Entity to look at").number("yaw", "Absolute yaw").number("pitch", "Absolute pitch"))
-                .kind(Tool.Kind.ACTION)
                 .handler(a -> {
                     LocalPlayer p = Ctx.player();
                     if (a.has("entity_id")) {
@@ -99,10 +94,9 @@ final class ActionTools {
                     return ToolResult.json(o);
                 }));
 
-        r.add(Tool.builder("select_slot").title("Select hotbar slot")
+        r.add(Gates.action("select_slot").title("Select hotbar slot")
                 .desc("Select hotbar slot 0-8.")
                 .schema(Schema.of().reqInt("slot", "0-8"))
-                .kind(Tool.Kind.ACTION)
                 .handler(a -> {
                     int s = a.reqInt("slot");
                     if (s < 0 || s > 8) throw new ToolException("slot must be 0-8");
@@ -110,40 +104,38 @@ final class ActionTools {
                     p.getInventory().selected = s;
                     JsonObject o = new JsonObject();
                     o.addProperty("selected_slot", s);
-                    o.add("item", dev.yamc.mcp.util.Stacks.json(p.getMainHandItem(), false, p.registryAccess()));
+                    o.add("item", Stacks.json(p.getMainHandItem(), false, p.registryAccess()));
                     return ToolResult.json(o);
                 }));
 
-        r.add(Tool.builder("interact").title("Interact")
+        r.add(Gates.action("interact").title("Interact")
                 .desc("Perform a single interaction like a mouse click. action: use_item (right-click air), use_on_block (right-click a block: x,y,z + face, or the crosshair block), attack (left-click entity by entity_id or crosshair entity), interact_entity (right-click entity), drop (drop one of held item), drop_stack, swap_hands, respawn (when dead). Server enforces reach.")
                 .schema(Schema.of().enumStr("action", "What to do.", true, "use_item", "use_on_block", "attack", "interact_entity", "drop", "drop_stack", "swap_hands", "respawn")
                         .enumStr("hand", "main (default) or off.", false, "main", "off")
                         .integer("x", "Block X for use_on_block").integer("y", "Block Y").integer("z", "Block Z")
                         .enumStr("face", "Block face for use_on_block (default: face toward the player).", false, "up", "down", "north", "south", "east", "west")
                         .integer("entity_id", "Entity for attack / interact_entity (default: crosshair entity)."))
-                .kind(Tool.Kind.ACTION)
                 .handler(ActionTools::interact));
 
-        r.add(Tool.builder("mine_block").title("Mine block")
+        r.add(Gates.action("mine_block").title("Mine block")
                 .desc("Look at and mine (break) the block at x,y,z with the held tool, waiting until it breaks or the timeout. Must be within reach. In singleplayer the game must not be paused (disable pause-on-focus-loss with F3+P).")
                 .schema(Schema.of().reqInt("x", "X").reqInt("y", "Y").reqInt("z", "Z").integer("timeout_seconds", "Default 15, max 120."))
-                .kind(Tool.Kind.ACTION).anyThread()
+                .anyThread()
                 .handler(ActionTools::mine));
 
-        r.add(Tool.builder("move").title("Move (hold keys)")
+        r.add(Gates.action("move").title("Move (hold keys)")
                 .desc("Hold movement/action keys for a number of ticks (20 ticks = 1 second), like a player pressing them: forward, back, left, right, jump, sneak, sprint, attack, use. Optionally face a yaw first. Waits for completion and returns the new position. In singleplayer the game must not be paused (F3+P disables pause on focus loss).")
                 .schema(Schema.of().strArray("keys", "Keys to hold, e.g. [\"forward\",\"sprint\"].")
                         .integer("ticks", "Duration in ticks (default 20, max 600).")
                         .number("yaw", "Face this yaw before moving (optional).")
                         .bool("wait", "Wait until finished (default true)."))
-                .kind(Tool.Kind.ACTION).anyThread()
+                .anyThread()
                 .handler(ActionTools::move));
 
-        r.add(Tool.builder("container_click").title("Click container slot")
+        r.add(Gates.action("container_click").title("Click container slot")
                 .desc("Click a slot in the open container (slot index from open_container) or, with no screen open, the player inventory menu (slots: 0 craft result, 1-4 craft grid, 5-8 armor, 9-35 main, 36-44 hotbar, 45 offhand). click_type: pickup (default; button 0=left,1=right), quick_move (shift-click), swap (button = hotbar 0-8, or 40 offhand), throw (button 0 one, 1 stack), clone, pickup_all. Slot -999 clicks outside (drops carried).")
                 .schema(Schema.of().reqInt("slot", "Slot index.").integer("button", "Mouse button / hotbar index (default 0).")
                         .enumStr("click_type", "Click type.", false, "pickup", "quick_move", "swap", "clone", "throw", "quick_craft", "pickup_all"))
-                .kind(Tool.Kind.ACTION)
                 .handler(a -> {
                     Minecraft mc = Ctx.mc();
                     LocalPlayer p = Ctx.player();
@@ -154,23 +146,21 @@ final class ActionTools {
                     mc.gameMode.handleInventoryMouseClick(menu.containerId, slot, a.integer("button", 0), type, p);
                     JsonObject o = new JsonObject();
                     o.addProperty("container_id", menu.containerId);
-                    if (slot >= 0) o.add("slot_now", dev.yamc.mcp.util.Stacks.json(menu.getSlot(slot).getItem(), false, p.registryAccess()));
-                    o.add("carried", dev.yamc.mcp.util.Stacks.json(menu.getCarried(), false, p.registryAccess()));
+                    if (slot >= 0) o.add("slot_now", Stacks.json(menu.getSlot(slot).getItem(), false, p.registryAccess()));
+                    o.add("carried", Stacks.json(menu.getCarried(), false, p.registryAccess()));
                     return ToolResult.json(o);
                 }));
 
-        r.add(Tool.builder("open_inventory").title("Open inventory")
+        r.add(Gates.action("open_inventory").title("Open inventory")
                 .desc("Open the player's inventory screen.")
-                .kind(Tool.Kind.ACTION)
                 .handler(a -> {
                     LocalPlayer p = Ctx.player();
                     Ctx.mc().setScreen(new InventoryScreen(p));
                     return ToolResult.ok("inventory opened");
                 }));
 
-        r.add(Tool.builder("close_screen").title("Close screen")
+        r.add(Gates.action("close_screen").title("Close screen")
                 .desc("Close the currently open GUI/container (like pressing Escape).")
-                .kind(Tool.Kind.ACTION)
                 .handler(a -> {
                     Minecraft mc = Ctx.mc();
                     if (mc.screen == null) return ToolResult.ok("no screen open");
@@ -180,7 +170,7 @@ final class ActionTools {
                     return ToolResult.ok("closed " + name);
                 }));
 
-        r.add(Tool.builder("highlight").title("Highlight in world")
+        r.add(Gates.action("highlight").title("Highlight in world")
                 .desc("Draw a colored outline box (visible through walls) with an optional floating label at a block or region, to show the player where something is. Returns a marker id.")
                 .schema(Schema.of().reqInt("x", "X").reqInt("y", "Y").reqInt("z", "Z")
                         .integer("x2", "Optional second corner X").integer("y2", "Y2").integer("z2", "Z2")
@@ -188,7 +178,6 @@ final class ActionTools {
                         .str("label", "Floating text label.")
                         .integer("seconds", "Lifetime (default 120; 0 = until cleared).")
                         .bool("through_walls", "Visible through blocks (default true)."))
-                .kind(Tool.Kind.ACTION)
                 .handler(a -> {
                     Ctx.player();
                     BlockPos p1 = Ctx.reqPos(a);
@@ -202,20 +191,18 @@ final class ActionTools {
                     return ToolResult.json(o);
                 }));
 
-        r.add(Tool.builder("clear_highlights").title("Clear highlights")
+        r.add(Gates.action("clear_highlights").title("Clear highlights")
                 .desc("Remove one highlight marker by id, or all markers.")
                 .schema(Schema.of().integer("marker_id", "Marker to remove (default: all)."))
-                .kind(Tool.Kind.ACTION)
                 .handler(a -> {
                     if (a.has("marker_id")) return ToolResult.ok(Markers.remove(a.reqInt("marker_id")) ? "removed" : "no such marker");
                     return ToolResult.ok("removed " + Markers.clear() + " markers");
                 }));
 
-        r.add(Tool.builder("notify_player").title("Notify player")
+        r.add(Gates.action("notify_player").title("Notify player")
                 .desc("Show a message to the local player only (not sent to the server): in chat, the action bar, as a title, or as a toast popup.")
                 .schema(Schema.of().reqStr("message", "Text.").enumStr("mode", "Where (default chat).", false, "chat", "actionbar", "title", "toast")
                         .str("title", "Heading for toast/title modes."))
-                .kind(Tool.Kind.ACTION)
                 .handler(a -> {
                     Minecraft mc = Ctx.mc();
                     String msg = a.reqStr("message");
@@ -358,51 +345,46 @@ final class ActionTools {
     }
 
     static ToolResult mine(Args a) throws Exception {
-        BlockPos pos = new BlockPos(a.reqInt("x"), a.reqInt("y"), a.reqInt("z"));
+        BlockPos pos = Ctx.reqPos(a);
         int timeout = a.integer("timeout_seconds", 15, 1, 120);
-        CompletableFuture<JsonObject> done = new CompletableFuture<>();
-        ClientThread.call(() -> {
+        return ToolResult.json(Ticker.run(() -> {
             LocalPlayer p = Ctx.player();
             requireUnpaused();
-            var level = Ctx.level();
-            var state = level.getBlockState(pos);
+            var state = Ctx.level().getBlockState(pos);
             if (state.isAir()) throw new ToolException("Block at " + pos.toShortString() + " is already air.");
             double dist = p.getEyePosition().distanceTo(Vec3.atCenterOf(pos));
             if (dist > p.blockInteractionRange() + 0.5) throw new ToolException("Block is out of reach (" + Json.round(dist) + " > " + p.blockInteractionRange() + ").");
-            String blockId = net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
+            String blockId = BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
             p.lookAt(EntityAnchorArgument.Anchor.EYES, Vec3.atCenterOf(pos));
             Direction face = faceToward(p, pos);
             Minecraft mc = Ctx.mc();
             mc.gameMode.startDestroyBlock(pos, face);
             long deadline = System.currentTimeMillis() + timeout * 1000L;
-            int[] ticks = {0};
-            Ticker.schedule(() -> {
-                ticks[0]++;
-                LocalPlayer pl = mc.player;
-                if (pl == null || mc.level == null) {
-                    done.complete(result(false, "left world", blockId, ticks[0]));
-                    return true;
+            return new Ticker.Job<JsonObject>() {
+                int ticks;
+
+                @Override
+                public JsonObject step() {
+                    ticks++;
+                    LocalPlayer pl = mc.player;
+                    if (pl == null || mc.level == null) return mineResult(false, "left world", blockId, ticks);
+                    if (mc.level.getBlockState(pos).isAir()) return mineResult(true, "broken", blockId, ticks);
+                    if (System.currentTimeMillis() > deadline) return mineResult(false, "timeout (wrong tool or unbreakable?)", blockId, ticks);
+                    pl.lookAt(EntityAnchorArgument.Anchor.EYES, Vec3.atCenterOf(pos));
+                    mc.gameMode.continueDestroyBlock(pos, face);
+                    pl.swing(InteractionHand.MAIN_HAND);
+                    return null;
                 }
-                if (mc.level.getBlockState(pos).isAir()) {
-                    done.complete(result(true, "broken", blockId, ticks[0]));
-                    return true;
+
+                @Override
+                public void end() {
+                    if (mc.gameMode != null) mc.gameMode.stopDestroyBlock();
                 }
-                if (System.currentTimeMillis() > deadline) {
-                    mc.gameMode.stopDestroyBlock();
-                    done.complete(result(false, "timeout (wrong tool or unbreakable?)", blockId, ticks[0]));
-                    return true;
-                }
-                pl.lookAt(EntityAnchorArgument.Anchor.EYES, Vec3.atCenterOf(pos));
-                mc.gameMode.continueDestroyBlock(pos, face);
-                pl.swing(InteractionHand.MAIN_HAND);
-                return false;
-            });
-            return null;
-        });
-        return ToolResult.json(done.get(timeout + 5L, TimeUnit.SECONDS));
+            };
+        }, (timeout + 5) * 1000L));
     }
 
-    private static JsonObject result(boolean ok, String msg, String block, int ticks) {
+    private static JsonObject mineResult(boolean ok, String msg, String block, int ticks) {
         JsonObject o = new JsonObject();
         o.addProperty("success", ok);
         o.addProperty("message", msg);
@@ -411,41 +393,45 @@ final class ActionTools {
         return o;
     }
 
+    private static KeyMapping key(Minecraft mc, String k) {
+        return switch (k.toLowerCase(Locale.ROOT)) {
+            case "forward", "w" -> mc.options.keyUp;
+            case "back", "backward", "s" -> mc.options.keyDown;
+            case "left", "a" -> mc.options.keyLeft;
+            case "right", "d" -> mc.options.keyRight;
+            case "jump", "space" -> mc.options.keyJump;
+            case "sneak", "shift" -> mc.options.keyShift;
+            case "sprint" -> mc.options.keySprint;
+            case "attack" -> mc.options.keyAttack;
+            case "use" -> mc.options.keyUse;
+            default -> throw new ToolException("Unknown key '" + k + "'");
+        };
+    }
+
     static ToolResult move(Args a) throws Exception {
         List<String> keys = a.strList("keys");
         if (keys.isEmpty()) throw new ToolException("Give at least one key.");
         int ticks = a.integer("ticks", 20, 1, 600);
-        boolean wait = a.bool("wait", true);
-        CompletableFuture<JsonObject> done = new CompletableFuture<>();
-        ClientThread.call(() -> {
+        Callable<Ticker.Job<JsonObject>> setup = () -> {
             LocalPlayer p = Ctx.player();
             requireUnpaused();
             Minecraft mc = Ctx.mc();
-            List<KeyMapping> maps = new ArrayList<>();
-            for (String k : keys) {
-                maps.add(switch (k.toLowerCase(Locale.ROOT)) {
-                    case "forward", "w" -> mc.options.keyUp;
-                    case "back", "backward", "s" -> mc.options.keyDown;
-                    case "left", "a" -> mc.options.keyLeft;
-                    case "right", "d" -> mc.options.keyRight;
-                    case "jump", "space" -> mc.options.keyJump;
-                    case "sneak", "shift" -> mc.options.keyShift;
-                    case "sprint" -> mc.options.keySprint;
-                    case "attack" -> mc.options.keyAttack;
-                    case "use" -> mc.options.keyUse;
-                    default -> throw new ToolException("Unknown key '" + k + "'");
-                });
-            }
+            List<KeyMapping> maps = keys.stream().map(k -> key(mc, k)).toList();
             if (a.has("yaw")) {
                 p.setYRot((float) a.dbl("yaw", 0));
                 p.yRotO = p.getYRot();
             }
             Vec3 start = p.position();
-            int[] left = {ticks};
-            for (KeyMapping m : maps) m.setDown(true);
-            Ticker.schedule(() -> {
-                if (--left[0] <= 0 || mc.player == null) {
-                    for (KeyMapping m : maps) m.setDown(false);
+            maps.forEach(m -> m.setDown(true));
+            return new Ticker.Job<>() {
+                int left = ticks;
+
+                @Override
+                public JsonObject step() {
+                    if (--left > 0 && mc.player != null) {
+                        maps.forEach(m -> m.setDown(true));
+                        return null;
+                    }
                     JsonObject o = new JsonObject();
                     if (mc.player != null) {
                         o.add("start", Json.vec(start));
@@ -453,15 +439,19 @@ final class ActionTools {
                         o.addProperty("distance_moved", Json.round(mc.player.position().distanceTo(start)));
                     }
                     o.addProperty("ticks", ticks);
-                    done.complete(o);
-                    return true;
+                    return o;
                 }
-                for (KeyMapping m : maps) m.setDown(true);
-                return false;
-            });
-            return null;
-        });
-        if (!wait) return ToolResult.ok("holding " + keys + " for " + ticks + " ticks");
-        return ToolResult.json(done.get(ticks / 20 + 10L, TimeUnit.SECONDS));
+
+                @Override
+                public void end() {
+                    maps.forEach(m -> m.setDown(false));
+                }
+            };
+        };
+        if (!a.bool("wait", true)) {
+            Ticker.start(setup);
+            return ToolResult.ok("holding " + keys + " for " + ticks + " ticks");
+        }
+        return ToolResult.json(Ticker.run(setup, ticks * 50L + 10_000));
     }
 }

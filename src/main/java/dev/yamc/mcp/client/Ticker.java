@@ -1,38 +1,68 @@
 package dev.yamc.mcp.client;
 
+import dev.yamc.mcp.util.ClientThread;
+
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
 
-/** Runs scheduled per-tick tasks on the client thread (used by multi-tick actions such as move/mine). */
+/** Runs multi-tick jobs (move, mine) on the client thread and reports their outcome through a future. */
 public final class Ticker {
-    /** Returns true when finished. */
-    public interface Task {
-        boolean tick();
+    /** A job stepped once per client tick. */
+    public interface Job<R> {
+        /** Returns the result when finished, or null to run again next tick. */
+        R step() throws Exception;
+
+        /** Runs exactly once when the job ends: finished, failed, or cancelled. */
+        default void end() {}
     }
 
-    private static final List<Task> TASKS = new ArrayList<>();
+    private record Running<R>(Job<R> job, CompletableFuture<R> done) {
+        /** Steps the job; returns true when it is over. */
+        boolean tick() {
+            if (done.isDone()) return true; // cancelled by the waiting caller
+            try {
+                R r = job.step();
+                if (r == null) return false;
+                done.complete(r);
+            } catch (Throwable t) {
+                done.completeExceptionally(t);
+            }
+            return true;
+        }
+    }
+
+    /** Only touched on the client thread. */
+    private static final List<Running<?>> RUNNING = new ArrayList<>();
 
     private Ticker() {}
 
-    /** Must be called on the client thread. */
-    public static void schedule(Task t) {
-        TASKS.add(t);
+    /** Runs {@code setup} on the client thread, then steps the job it returns every tick. Setup errors are thrown here. */
+    public static <R> CompletableFuture<R> start(Callable<Job<R>> setup) throws Exception {
+        return ClientThread.call(() -> {
+            Running<R> r = new Running<>(setup.call(), new CompletableFuture<>());
+            RUNNING.add(r);
+            return r.done();
+        });
+    }
+
+    /** {@link #start} and wait for the result. A job that fails or times out throws; on timeout it is cancelled. */
+    public static <R> R run(Callable<Job<R>> setup, long timeoutMs) throws Exception {
+        CompletableFuture<R> f = start(setup);
+        try {
+            return ClientThread.await(f, timeoutMs, "the action to finish");
+        } finally {
+            f.cancel(false);
+        }
     }
 
     static void tick() {
-        if (TASKS.isEmpty()) return;
-        List<Task> done = new ArrayList<>();
-        for (Task t : new ArrayList<>(TASKS)) {
-            try {
-                if (t.tick()) done.add(t);
-            } catch (Throwable e) {
-                done.add(t);
-            }
+        if (RUNNING.isEmpty()) return;
+        for (Running<?> r : new ArrayList<>(RUNNING)) {
+            if (!r.tick()) continue;
+            RUNNING.remove(r);
+            r.job().end();
         }
-        TASKS.removeAll(done);
-    }
-
-    public static void cancelAll() {
-        TASKS.clear();
     }
 }

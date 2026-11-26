@@ -41,9 +41,8 @@ public final class Config {
         b.push("push");
         PUSH_ENABLED = b.comment("Push game events to connected MCP clients as notifications (no polling needed).")
                 .define("enabled", true);
-        PUSH_EVENT_TYPES = b.comment("Event types to push. Empty = defaults (death, damage, dimension_change, level_up, gamemode_change, join_world, leave_world).",
-                        "All types: damage, heal, death, item_gained, item_lost, effect_added, effect_removed, dimension_change, biome_change,",
-                        "level_up, gamemode_change, chat, system_message, actionbar, screen_open, screen_close, join_world, leave_world")
+        PUSH_EVENT_TYPES = b.comment("Event types to push. Empty = defaults (" + String.join(", ", dev.yamc.mcp.client.GameEvent.defaultPushIds()) + ").",
+                        "All types: " + String.join(", ", dev.yamc.mcp.client.GameEvent.ids()))
                 .defineListAllowEmpty("eventTypes", java.util.List.of(), () -> "", o -> o instanceof String);
         b.pop();
         SPEC = b.build();

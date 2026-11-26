@@ -71,6 +71,11 @@ public final class Schema {
         return this;
     }
 
+    /** The standard "source" argument (auto / client / server). */
+    public Schema source(String desc) {
+        return enumStr("source", desc, false, "auto", "client", "server");
+    }
+
     public Schema idFilters() {
         str("namespace", "Only ids in this namespace (mod id), e.g. 'minecraft' or 'create'.");
         str("query", "Case-insensitive substring matched against the id and the localized display name.");

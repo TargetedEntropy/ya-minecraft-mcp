@@ -42,7 +42,7 @@ public final class ClientThread {
         return await(f, timeoutMs, "integrated server thread");
     }
 
-    private static <T> T await(CompletableFuture<T> f, long timeoutMs, String what) throws Exception {
+    public static <T> T await(CompletableFuture<T> f, long timeoutMs, String what) throws Exception {
         try {
             return f.get(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {

@@ -1,12 +1,31 @@
 # YAMC MCP
 
-A **client-side only** NeoForge 1.21.1 mod that runs a [Model Context Protocol](https://modelcontextprotocol.io) server
+A **client-side only** mod for **Fabric and NeoForge** that runs a [Model Context Protocol](https://modelcontextprotocol.io) server
 inside Minecraft, so AI assistants such as Claude Code can read live game state: player, inventory, world, registries, tags,
 recipes (modded too) and more. They can also act in game. Servers do not need the mod.
 
+## Supported versions
+
+One jar per Minecraft version and loader, named `yamcmcp-<loader>-<mod version>+<minecraft>.jar`:
+
+| Jar built for | Fabric runs on | NeoForge runs on | Java |
+|---|---|---|---|
+| 1.21.1 | 1.21 – 1.21.1 | 1.21.1 | 21 |
+| 1.21.4 | 1.21.4 | 1.21.4 | 21 |
+| 1.21.5 | 1.21.5 | 1.21.5 | 21 |
+| 1.21.8 | 1.21.7 – 1.21.8 | 1.21.8 | 21 |
+| 1.21.10 | 1.21.9 – 1.21.10 | 1.21.10 | 21 |
+| 1.21.11 | 1.21.11 | 1.21.11 | 21 |
+| 26.1.2 | 26.1.2 | 26.1.2 | 25 |
+| 26.2 | 26.2.x | 26.2.x | 25 |
+| 26.3 | 26.3.x | 26.3.x | 25 |
+
+The Fabric jars need [Fabric API](https://modrinth.com/mod/fabric-api).
+
 ## Install & connect
 
-1. Build (Java 21): `git clone https://github.com/TargetedEntropy/ya-minecraft-mcp && cd ya-minecraft-mcp && ./gradlew build` → `build/libs/yamcmcp-<version>.jar`, then drop it into your NeoForge 1.21.1 `mods/` folder.
+1. Download the jar for your Minecraft version and loader from the [releases](https://github.com/TargetedEntropy/ya-minecraft-mcp/releases)
+   (or build it, see [Development](#development)) and drop it into your `mods/` folder.
 2. Launch the game. The server listens on `http://127.0.0.1:25599/mcp`.
 3. In game, run `/yamc connect`. It copies the setup command to your clipboard:
    ```
@@ -29,7 +48,7 @@ claude --dangerously-load-development-channels server:minecraft
 
 `/yamc connect channel` copies this command with the real paths filled in. It's also written to `config/yamcmcp-connect.txt`.
 
-- The bridge uses only the JDK, so the Java 21 that runs Minecraft works. Start the game before Claude Code; if the game
+- The bridge uses only the JDK, so the Java that runs Minecraft works. Start the game before Claude Code; if the game
   restarts, the bridge reconnects the event stream automatically.
 - Events arrive as `<channel source="minecraft" event="death" seq="42">Player DIED at ...</channel>`.
 - Pushed by default: `death`, `damage` (at most once per 5 s), `dimension_change`, `level_up`, `gamemode_change`,
@@ -49,7 +68,7 @@ and movement or mining tools can't run.
 |---|---|---|
 | Static registries (blocks, items, entities, fluids, effects, ...; modded registries too) | ✅ | ✅ |
 | Synced data-driven registries (biome, damage_type, enchantment, dimension_type, trims, ...) and their tags | ✅ | ✅ |
-| Recipes, modded included | ✅ (ingredient tags flattened to item lists) | ✅ from the integrated server, tags intact |
+| Recipes, modded included | ✅ up to 1.21.1 (ingredient tags flattened to item lists); ❌ from 1.21.2, servers no longer send recipes to clients | ✅ from the integrated server, tags intact |
 | Structures, structure sets, worldgen features, noise, loot tables, locate | ❌ server-only data | ✅ |
 
 Every response reports a `source` (`static`, `synced`, `integrated_server`, `client`).
@@ -67,7 +86,10 @@ Every response reports a `source` (`static`, `synced`, `integrated_server`, `cli
 
 List tools share the same filters (`namespace`, `query`, which matches the id or the display name, and `regex`) and paging (`page_size`, `cursor` → `next_cursor`).
 
-## Config (`config/yamcmcp-client.toml`)
+## Config
+
+NeoForge: `config/yamcmcp-client.toml`. Fabric: `config/yamcmcp.properties` (same keys without the section prefix, e.g. `port`,
+`enableActions`, `push.eventTypes`; read at startup, so restart the game after editing).
 
 - `server.port` (25599), `server.bindAddress` (127.0.0.1), `server.requireToken` (true), `server.clientThreadTimeoutMs`
 - `tools.enableActions` (true): set false for a read-only mod. Action tools are then hidden.
@@ -83,17 +105,29 @@ List tools share the same filters (`namespace`, `query`, which matches the id or
 
 ## Development
 
-- `./gradlew runClient`: normal dev client.
-- `./gradlew runTestClient`: client in `run-test/` that auto-creates and joins a singleplayer world named `mcptest`
-  (`-Dyamcmcp.devAutoWorld`). Headless: `xvfb-run -a ./gradlew runTestClient`.
+One source tree builds every version and loader with [Stonecutter](https://stonecutter.kikugie.dev). Each pair is a Gradle
+project named `<minecraft>-<loader>` (e.g. `1.21.11-fabric`); versions and dependencies are in `stonecutter.properties.toml`.
+Needs JDK 21 and JDK 25 (26.x).
+
+- `./gradlew buildAll`: every jar, collected in `build/libs/<mod version>/`. One node: `./gradlew :26.3-neoforge:build`.
+- `./gradlew :<node>:runClient`, or `:<node>:runTestClient` for a client in `run-test/<node>/` that auto-creates and joins a
+  singleplayer world named `mcptest`. Headless: `xvfb-run -a ./gradlew :<node>:runTestClient`.
+- `scripts/smoke-test.sh <node>`: launches that test client, calls 35 tools over MCP and reports pass/fail.
+- The source is kept in the `1.21.1-neoforge` state. Version-specific code is marked with Stonecutter comments
+  (`//? if >=1.21.2 {` ... `//?} else {` ... `//?}`). To work on another version in the IDE, run
+  `./gradlew "Set active project to 26.3-fabric"`, and `./gradlew "Reset active project"` before committing.
+- Where version code lives: `platform/` (what a loader provides), `fabric/` and `neoforge/` (entrypoints, events, config),
+  `recipe/Recipes` (the recipe API), `util/Mc` (small API differences), `util/Inventories`, `client/Markers` (rendering).
+  Tools call these instead of writing version conditions themselves.
 
 ## Publishing to CurseForge
 
-`scripts/publish-curseforge.sh [--type release|beta|alpha] [--changelog notes.md] [--dry-run]` builds the jar and uploads it,
-tagged Minecraft 1.21.1 / NeoForge / Client / Java 21.
+`scripts/publish-curseforge.sh [--type release|beta|alpha] [--changelog notes.md] [--only <node>]... [--no-build] [--dry-run]`
+builds every jar and uploads each one, tagged with its Minecraft releases (`mod.mc_releases`), loader, Client and Java version.
+Use `--dry-run` first to see what would be uploaded.
 
 - Token: from `CURSEFORGE_TOKEN`, or from a file containing `TOKEN=...` (default `~/.config/curseforge.cred`).
-- Project id: from `CURSEFORGE_PROJECT_ID`, or `curseforge_project_id` in `gradle.properties`.
+- Project id: from `CURSEFORGE_PROJECT_ID`, or `mod.curseforge_project_id` in `stonecutter.properties.toml`.
 
 ## License
 

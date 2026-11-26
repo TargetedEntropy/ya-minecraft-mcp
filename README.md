@@ -54,10 +54,10 @@ and movement or mining tools can't run.
 
 Every response reports a `source` (`static`, `synced`, `integrated_server`, `client`).
 
-## Tools (50)
+## Tools (51)
 
 **Player:** `player_status`, `player_inventory`
-**World:** `world_info`, `look_target`, `block_at`, `scan_area`, `find_blocks`, `nearby_entities`, `entity_info`, `players_online`, `open_container`, `hud`
+**World:** `world_info`, `look_target`, `block_at`, `blocks_at`, `scan_area`, `find_blocks`, `nearby_entities`, `entity_info`, `players_online`, `open_container`, `hud`
 **Registries & tags:** `registry_list`, `registry_entries`, `registry_entry`, `tags_list`, `tag_members`, `tags_of`
 **Recipes:** `recipe_types`, `recipes_search`, `recipe_get`, `craft_plan`, `craftable_now`
 **Info:** `mods_list`, `item_tooltip`, `advancements`, `statistics`, `chat_history`, `events_since`, `wait_for_event`, `push_settings`, `screenshot`, `export_data`

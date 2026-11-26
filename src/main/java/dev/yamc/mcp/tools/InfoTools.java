@@ -46,7 +46,7 @@ final class InfoTools {
     static void register(ToolRegistry r) {
         r.add(Tool.builder("mods_list").title("Loaded mods")
                 .desc("Mods loaded in this client with id, name, version and description. Works on the title screen.")
-                .schema(Schema.of().str("query", "Substring of mod id or name.").bool("include_description", "Include descriptions (default false).").paging())
+                .schema(Schema.of().str("query", "Substring of mod id or name.").bool("include_description", "Include descriptions (default false).").paging(200))
                 .handler(a -> {
                     String q = a.str("query", "").toLowerCase(Locale.ROOT);
                     boolean desc = a.bool("include_description", false);
@@ -95,14 +95,14 @@ final class InfoTools {
                 .desc("Advancement progress known to the client (the server sends visible advancements). Filter by status and query; shows title, description, type, progress and remaining criteria.")
                 .schema(Schema.of().enumStr("status", "Filter (default all).", false, "all", "done", "in_progress", "not_started")
                         .str("query", "Substring of id or title.").bool("include_recipes", "Include recipe-unlock advancements (default false).")
-                        .bool("include_criteria", "List remaining criteria (default true).").paging())
+                        .bool("include_criteria", "List remaining criteria (default true).").paging(50))
                 .handler(a -> ToolResult.json(advancements(a))));
 
         r.add(Tool.builder("statistics").title("Statistics")
                 .desc("Player statistics (blocks mined, items crafted/used/picked up, mobs killed, distance walked, deaths, play time, ...). Requests fresh values from the server first. Only non-zero stats are returned.")
                 .schema(Schema.of().str("category", "Stat type, e.g. minecraft:custom, minecraft:mined, minecraft:crafted, minecraft:killed, minecraft:used, minecraft:killed_by, minecraft:picked_up.")
                         .str("query", "Substring of stat value id, e.g. 'diamond'.")
-                        .bool("refresh", "Request updated stats from the server first (default true).").paging())
+                        .bool("refresh", "Request updated stats from the server first (default true).").paging(100))
                 .anyThread()
                 .handler(InfoTools::statistics));
 
@@ -187,9 +187,13 @@ final class InfoTools {
                     JsonObject o = new JsonObject();
                     o.addProperty("enabled", dev.yamc.mcp.client.PushPolicy.enabled());
                     o.add("types", dev.yamc.mcp.util.Json.strings(dev.yamc.mcp.client.PushPolicy.types()));
-                    o.addProperty("connected_streams", dev.yamc.mcp.mcp.SseHub.openStreams());
-                    if (dev.yamc.mcp.mcp.SseHub.openStreams() == 0)
-                        o.addProperty("note", "No client is listening for pushes. In Claude Code, connect through the stdio bridge as a channel (see README / /yamc connect channel).");
+                    int all = dev.yamc.mcp.mcp.SseHub.openStreams(), ch = dev.yamc.mcp.mcp.SseHub.channelStreams();
+                    o.addProperty("connected_streams", all);
+                    o.addProperty("channel_streams", ch);
+                    if (ch == 0)
+                        o.addProperty("note", all > 0
+                                ? "A client holds the notification stream over plain HTTP, but Claude Code only shows pushed events in the conversation for channel servers. Connect through the stdio bridge (/yamc connect channel) and start Claude Code with --dangerously-load-development-channels server:minecraft; until then use events_since / wait_for_event."
+                                : "No client is listening for pushes. Connect through the stdio bridge as a Claude Code channel (/yamc connect channel), or poll with events_since.");
                     return ToolResult.json(o);
                 }));
 

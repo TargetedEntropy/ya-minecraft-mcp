@@ -85,6 +85,36 @@ final class WorldTools {
                 .schema(Schema.of().reqInt("x", "X").reqInt("y", "Y").reqInt("z", "Z").bool("include_nbt", "Include client-known block entity NBT (default true)."))
                 .handler(a -> ToolResult.json(blockJson(Ctx.level(), Ctx.reqPos(a), a.bool("include_nbt", true)))));
 
+        r.add(Tool.builder("blocks_at").title("Blocks at positions")
+                .desc("Batch version of block_at: block state, fluid, light and block entity type for up to 256 positions in one call.")
+                .schema(Schema.of().reqStr("positions", "Positions as a JSON array of [x,y,z] triples or {x,y,z} objects, e.g. [[1,64,2],[3,65,4]].")
+                        .bool("include_nbt", "Include client-known block entity NBT (default false)."))
+                .handler(a -> {
+                    com.google.gson.JsonElement raw = a.raw().get("positions");
+                    if (raw != null && raw.isJsonPrimitive()) raw = com.google.gson.JsonParser.parseString(raw.getAsString());
+                    if (raw == null || !raw.isJsonArray()) throw new ToolException("positions must be a JSON array");
+                    JsonArray in = raw.getAsJsonArray();
+                    if (in.size() > 256) throw new ToolException("At most 256 positions per call.");
+                    boolean nbt = a.bool("include_nbt", false);
+                    ClientLevel l = Ctx.level();
+                    JsonArray out = new JsonArray();
+                    for (var e : in) {
+                        BlockPos bp;
+                        if (e.isJsonArray() && e.getAsJsonArray().size() == 3) {
+                            var t = e.getAsJsonArray();
+                            bp = new BlockPos(t.get(0).getAsInt(), t.get(1).getAsInt(), t.get(2).getAsInt());
+                        } else if (e.isJsonObject()) {
+                            var t = e.getAsJsonObject();
+                            bp = new BlockPos(t.get("x").getAsInt(), t.get("y").getAsInt(), t.get("z").getAsInt());
+                        } else throw new ToolException("Bad position: " + e);
+                        out.add(blockJson(l, bp, nbt));
+                    }
+                    JsonObject o = new JsonObject();
+                    o.addProperty("count", out.size());
+                    o.add("blocks", out);
+                    return ToolResult.json(o);
+                }));
+
         r.add(Tool.builder("scan_area").title("Scan area")
                 .desc("Scan a box of blocks (max 32768 blocks). mode=summary (default) returns counts per block id; mode=list returns every non-air block with its position. Box: x1,y1,z1..x2,y2,z2, or a cube of 'radius' around the player.")
                 .schema(Schema.of().integer("x1", "Corner 1 X").integer("y1", "Corner 1 Y").integer("z1", "Corner 1 Z")
@@ -92,7 +122,7 @@ final class WorldTools {
                         .integer("radius", "Alternative to corners: cube radius around player (default 4, max 15).")
                         .enumStr("mode", "summary or list", false, "summary", "list")
                         .bool("include_air", "Include air in results (default false).")
-                        .paging())
+                        .paging(200))
                 .handler(a -> ToolResult.json(scan(a))));
 
         r.add(Tool.builder("find_blocks").title("Find blocks")
@@ -109,7 +139,7 @@ final class WorldTools {
                         .str("type", "Entity type id, e.g. minecraft:zombie.")
                         .enumStr("category", "Entity category filter.", false, "all", "hostile", "passive", "player", "item", "other")
                         .str("query", "Substring of type id or name.")
-                        .paging())
+                        .paging(50))
                 .handler(a -> ToolResult.json(nearby(a))));
 
         r.add(Tool.builder("entity_info").title("Entity details")
@@ -119,7 +149,7 @@ final class WorldTools {
 
         r.add(Tool.builder("players_online").title("Online players")
                 .desc("Players in the tab list with ping and game mode.")
-                .schema(Schema.of().paging())
+                .schema(Schema.of().paging(100))
                 .handler(a -> {
                     var c = Ctx.mc().getConnection();
                     if (c == null) throw new ToolException("Not connected to a world.");
@@ -144,7 +174,7 @@ final class WorldTools {
                 .handler(a -> ToolResult.json(openContainer(a))));
 
         r.add(Tool.builder("hud").title("HUD info")
-                .desc("Text shown on the HUD: scoreboard sidebar, boss bars, current title/subtitle and action bar message.")
+                .desc("Text shown on the HUD: scoreboard sidebar, boss bars, current title/subtitle and action bar message. Elements that are not currently shown are omitted (boss_bars is always present, possibly empty).")
                 .handler(a -> ToolResult.json(hud())));
     }
 

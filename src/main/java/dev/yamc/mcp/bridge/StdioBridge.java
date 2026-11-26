@@ -154,7 +154,7 @@ public final class StdioBridge {
             long backoff = 1000;
             while (true) {
                 try {
-                    HttpRequest r = req().header("Accept", "text/event-stream").GET().build();
+                    HttpRequest r = req().header("Accept", "text/event-stream").header("X-Yamc-Client", "channel-bridge").GET().build();
                     HttpResponse<Stream<String>> resp = http.send(r, HttpResponse.BodyHandlers.ofLines());
                     if (resp.statusCode() != 200) {
                         log("notification stream: HTTP " + resp.statusCode());

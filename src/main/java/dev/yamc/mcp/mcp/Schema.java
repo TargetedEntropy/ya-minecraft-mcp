@@ -65,8 +65,8 @@ public final class Schema {
     }
 
     /** Adds the standard filter + paging parameters used by every list tool. */
-    public Schema paging() {
-        integer("page_size", "Results per page (default 50, max 500).");
+    public Schema paging(int defaultSize) {
+        integer("page_size", "Results per page (default " + defaultSize + ", max 500).");
         str("cursor", "Opaque cursor from a previous response's next_cursor.");
         return this;
     }

@@ -51,7 +51,7 @@ final class RegistryTools {
     static void register(ToolRegistry r) {
         r.add(Tool.builder("registry_list").title("List registries")
                 .desc("List every registry visible to the client: static (blocks, items, entity types, ... incl. modded registries), synced data-driven (biome, damage_type, enchantment, ...) and - in singleplayer - server-only data-driven ones (worldgen/structure, loot_table, ...). Shows entry count, tag count, source and whether entries can be dumped as JSON.")
-                .schema(Schema.of().idFilters().paging())
+                .schema(Schema.of().idFilters().paging(200))
                 .handler(a -> {
                     IdFilter f = IdFilter.from(a);
                     List<Map.Entry<ResourceLocation, Regs.Resolved>> list = Regs.all().entrySet().stream()
@@ -75,7 +75,7 @@ final class RegistryTools {
                         .bool("include_names", "Include localized display names (default true).")
                         .bool("include_tags", "Include the tags of each entry (default false).")
                         .enumStr("source", SOURCE_DESC, false, "auto", "client", "server")
-                        .paging())
+                        .paging(100))
                 .handler(a -> ToolResult.json(entries(a))));
 
         r.add(Tool.builder("registry_entry").title("Registry entry details")
@@ -91,7 +91,7 @@ final class RegistryTools {
                 .schema(Schema.of().reqStr("registry", "Registry id, e.g. minecraft:item.")
                         .idFilters()
                         .enumStr("source", SOURCE_DESC, false, "auto", "client", "server")
-                        .paging())
+                        .paging(100))
                 .handler(a -> ToolResult.json(tagsList(a))));
 
         r.add(Tool.builder("tag_members").title("Tag members")
@@ -100,7 +100,7 @@ final class RegistryTools {
                         .reqStr("tag", "Tag id, e.g. #minecraft:logs or c:ingots.")
                         .bool("include_names", "Include localized names (default true).")
                         .enumStr("source", SOURCE_DESC, false, "auto", "client", "server")
-                        .paging())
+                        .paging(200))
                 .handler(a -> ToolResult.json(tagMembers(a))));
 
         r.add(Tool.builder("tags_of").title("Tags of an entry")

@@ -22,7 +22,7 @@ import java.util.TreeMap;
 
 /** Recursive crafting planner. */
 final class CraftPlanner {
-    private final Map<Item, List<RecipeHolder<?>>> byOutput = new HashMap<>();
+    private final Map<Item, List<RecipeHolder<?>>> byOutput;
     private final Map<Item, Integer> inv;
     private final RecipeTools.Src src;
     private final int maxDepth;
@@ -32,23 +32,93 @@ final class CraftPlanner {
     private final Map<String, Integer> leftovers = new TreeMap<>();
     private int nodes;
 
-    private CraftPlanner(RecipeTools.Src src, Set<String> types, Map<Item, Integer> inv, int maxDepth) {
-        this.src = src;
-        this.inv = inv;
-        this.maxDepth = maxDepth;
-        for (RecipeHolder<?> h : src.manager().getRecipes()) {
+    /** Recipe index for one recipe set + type selection, cached because big packs have 100k+ recipes. */
+    private static final class Index {
+        final Map<Item, List<RecipeHolder<?>>> byOutput = new HashMap<>();
+        /** item -> every item that appears as an ingredient option in a recipe producing it */
+        final Map<Item, Set<Item>> inputsOf = new HashMap<>();
+    }
+
+    private static Object cacheKey;
+    private static Index cacheIndex;
+
+    private static synchronized Index index(RecipeTools.Src src, Set<String> types) {
+        var recipes = src.manager().getRecipes();
+        List<Object> key = List.of(System.identityHashCode(recipes), recipes.size(), new java.util.TreeSet<>(types), src.source());
+        if (key.equals(cacheKey)) return cacheIndex;
+        Index idx = new Index();
+        for (RecipeHolder<?> h : recipes) {
             Recipe<?> r = h.value();
             if (!types.contains(RecipeTools.typeId(r)) || r.isSpecial()) continue;
             ItemStack res = RecipeTools.safeResult(r, src.regs());
             if (res.isEmpty() || r.getIngredients().stream().allMatch(Ingredient::isEmpty)) continue;
-            byOutput.computeIfAbsent(res.getItem(), k -> new ArrayList<>()).add(h);
+            idx.byOutput.computeIfAbsent(res.getItem(), k -> new ArrayList<>()).add(h);
+            Set<Item> ins = idx.inputsOf.computeIfAbsent(res.getItem(), k -> new HashSet<>());
+            for (Ingredient ing : r.getIngredients()) {
+                if (ing.isEmpty()) continue;
+                ItemStack[] opts = ing.getItems();
+                if (opts.length > 16) continue; // broad tag ingredients don't indicate a storage/compression pair
+                for (ItemStack o : opts) ins.add(o.getItem());
+            }
         }
         // Deterministic preference: vanilla namespace first, then by id
-        for (List<RecipeHolder<?>> l : byOutput.values())
+        for (List<RecipeHolder<?>> l : idx.byOutput.values())
             l.sort((x, y) -> {
                 int a = x.id().getNamespace().equals("minecraft") ? 0 : 1, b = y.id().getNamespace().equals("minecraft") ? 0 : 1;
                 return a != b ? Integer.compare(a, b) : x.id().compareTo(y.id());
             });
+        cacheKey = key;
+        cacheIndex = idx;
+        return idx;
+    }
+
+    private final Set<String> excludeNamespaces;
+    private final java.util.function.Predicate<Item> raw;
+    private final Map<String, Integer> skippedReversible = new TreeMap<>();
+
+    private CraftPlanner(RecipeTools.Src src, Set<String> types, Map<Item, Integer> inv, int maxDepth,
+                         Set<String> excludeNamespaces, java.util.function.Predicate<Item> raw) {
+        this.src = src;
+        this.inv = inv;
+        this.maxDepth = maxDepth;
+        this.excludeNamespaces = excludeNamespaces;
+        this.raw = raw;
+        this.idx = index(src, types);
+        this.byOutput = idx.byOutput;
+    }
+
+    private final Index idx;
+
+    /**
+     * A recipe making X is "reversible" when one of its ingredients Y can itself be crafted from X
+     * (storage blocks, nuggets, compression/decompression ladders). Using such recipes for intermediate
+     * steps makes the planner climb compression tiers instead of treating X as a raw material.
+     */
+    private boolean reversible(RecipeHolder<?> h, Item out) {
+        for (Ingredient ing : h.value().getIngredients()) {
+            if (ing.isEmpty()) continue;
+            ItemStack[] opts = ing.getItems();
+            if (opts.length > 16) continue;
+            for (ItemStack o : opts) {
+                Set<Item> ins = idx.inputsOf.get(o.getItem());
+                if (ins != null && ins.contains(out)) return true;
+            }
+        }
+        return false;
+    }
+
+    /** True if every ingredient of the recipe (for the given number of crafts) is already in the inventory. */
+    private boolean coveredByInventory(RecipeHolder<?> h, int crafts) {
+        Map<Item, Integer> need = new HashMap<>();
+        for (Ingredient ing : h.value().getIngredients()) {
+            if (ing.isEmpty()) continue;
+            Item best = null;
+            for (ItemStack o : ing.getItems()) if (inv.getOrDefault(o.getItem(), 0) > 0) { best = o.getItem(); break; }
+            if (best == null) return false;
+            need.merge(best, crafts, Integer::sum);
+        }
+        for (var e : need.entrySet()) if (inv.getOrDefault(e.getKey(), 0) < e.getValue()) return false;
+        return true;
     }
 
     static JsonObject plan(Args a, RecipeTools.Src src) {
@@ -60,7 +130,19 @@ final class CraftPlanner {
         else for (String t : types) typeSet.add(Args.parseId(t).toString());
         Map<Item, Integer> inv = a.bool("use_inventory", true) && Ctx.mc().player != null
                 ? RecipeTools.inventoryCounts(Ctx.player()) : new HashMap<>();
-        CraftPlanner p = new CraftPlanner(src, typeSet, inv, a.integer("max_depth", 8, 1, 20));
+        Set<String> exNs = new HashSet<>(a.strList("exclude_namespaces"));
+        List<java.util.function.Predicate<Item>> rawPreds = new ArrayList<>();
+        for (String spec : a.strList("raw_materials")) {
+            if (spec.startsWith("#")) {
+                var tag = net.minecraft.tags.TagKey.create(net.minecraft.core.registries.Registries.ITEM, Args.parseId(spec));
+                rawPreds.add(it -> it.builtInRegistryHolder().is(tag));
+            } else {
+                Item it = Ctx.item(spec);
+                rawPreds.add(x -> x == it);
+            }
+        }
+        CraftPlanner p = new CraftPlanner(src, typeSet, inv, a.integer("max_depth", 8, 1, 20), exNs,
+                it -> rawPreds.stream().anyMatch(pr -> pr.test(it)));
         if (!p.byOutput.containsKey(target)) {
             throw new ToolException("No " + typeSet + " recipe produces " + BuiltInRegistries.ITEM.getKey(target)
                     + ". Try recipes_search output=<item> to see other recipe types, then pass recipe_types.");
@@ -77,6 +159,10 @@ final class CraftPlanner {
         p.steps.forEach(st::add);
         o.add("steps", st);
         if (!p.leftovers.isEmpty()) o.add("leftovers", map(p.leftovers));
+        if (!p.skippedReversible.isEmpty()) {
+            o.add("treated_as_raw", map(p.skippedReversible));
+            o.addProperty("note", "Items in treated_as_raw only had reversible recipes (storage blocks, nuggets, compression tiers) and were treated as raw materials. Ask for them directly to plan those.");
+        }
         o.add("tree", tree);
         return o;
     }
@@ -108,8 +194,8 @@ final class CraftPlanner {
             }
         }
         if (needed == 0) return node;
-        List<RecipeHolder<?>> recipes = byOutput.get(item);
-        if (recipes == null || depth >= maxDepth || path.contains(item)) {
+        List<RecipeHolder<?>> recipes = candidates(item, needed, root);
+        if (recipes.isEmpty() || depth >= maxDepth || path.contains(item) || (!root && raw.test(item))) {
             node.addProperty("missing", needed);
             missing.merge(id, needed, Integer::sum);
             return node;
@@ -151,6 +237,27 @@ final class CraftPlanner {
             leftovers.merge(id, extra, Integer::sum);
         }
         return node;
+    }
+
+    /** Usable recipes for an item: excluded namespaces removed; reversible ones only at the root or when the inventory covers them. */
+    private List<RecipeHolder<?>> candidates(Item item, int needed, boolean root) {
+        List<RecipeHolder<?>> all = byOutput.get(item);
+        List<RecipeHolder<?>> out = new ArrayList<>();
+        if (all == null) return out;
+        int skipped = 0;
+        for (RecipeHolder<?> h : all) {
+            if (excludeNamespaces.contains(h.id().getNamespace())) continue;
+            if (!root && reversible(h, item)) {
+                int per = Math.max(1, RecipeTools.safeResult(h.value(), src.regs()).getCount());
+                if (!coveredByInventory(h, (needed + per - 1) / per)) {
+                    skipped++;
+                    continue;
+                }
+            }
+            out.add(h);
+        }
+        if (out.isEmpty() && skipped > 0) skippedReversible.merge(BuiltInRegistries.ITEM.getKey(item).toString(), needed, Integer::sum);
+        return out;
     }
 
     /** Prefer a recipe whose ingredients are all in the inventory, then one without cyclic ingredients. */

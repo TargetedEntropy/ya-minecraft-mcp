@@ -22,7 +22,7 @@ final class PlayerTools {
 
     static void register(ToolRegistry r) {
         r.add(Tool.builder("player_status").title("Player status")
-                .desc("Current player state: position, rotation, dimension, biome, health, absorption, food, saturation, air, XP, armor, game mode, active effects, movement flags, vehicle and held items.")
+                .desc("Current player state (with game_time/timestamp_ms so you can tell when coordinates are stale; re-read before acting on positions): position, rotation, dimension, biome, health, absorption, food, saturation, air, XP, armor, game mode, active effects, movement flags, vehicle and held items.")
                 .handler(a -> ToolResult.json(status())));
 
         r.add(Tool.builder("player_inventory").title("Player inventory")
@@ -37,6 +37,8 @@ final class PlayerTools {
         Minecraft mc = Ctx.mc();
         LocalPlayer p = Ctx.player();
         JsonObject o = new JsonObject();
+        o.addProperty("game_time", p.level().getGameTime());
+        o.addProperty("timestamp_ms", System.currentTimeMillis());
         o.addProperty("name", p.getGameProfile().getName());
         o.addProperty("uuid", p.getUUID().toString());
         o.add("position", Json.vec(p.position()));

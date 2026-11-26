@@ -84,7 +84,7 @@ final class RecipeTools {
                         .idFilters()
                         .bool("include_raw", "Include the full codec-encoded recipe JSON (default false).")
                         .enumStr("source", SOURCE_DESC, false, "auto", "client", "server")
-                        .paging())
+                        .paging(25))
                 .handler(a -> ToolResult.json(search(a))));
 
         r.add(Tool.builder("recipe_get").title("Get recipe")
@@ -102,12 +102,14 @@ final class RecipeTools {
                 }));
 
         r.add(Tool.builder("craft_plan").title("Crafting plan")
-                .desc("Recursive crafting plan for an item: chooses recipes, expands intermediate ingredients, subtracts what the player already has, and returns ordered craft steps, raw materials needed and what is missing.")
+                .desc("Recursive crafting plan for an item: chooses recipes, expands intermediate ingredients, subtracts what the player already has, and returns ordered craft steps, raw materials needed and what is missing. Reversible recipes (storage blocks, nuggets, compression/decompression tiers) are not used for intermediate steps unless the inventory already holds their input, so items like logs and ingots are treated as raw materials.")
                 .schema(Schema.of().reqStr("item", "Item id to craft.")
                         .integer("count", "How many (default 1).")
                         .strArray("recipe_types", "Recipe types allowed for intermediate steps (default [minecraft:crafting]). Add minecraft:smelting etc. to include furnaces, or modded types.")
                         .bool("use_inventory", "Subtract items already in the player inventory (default true).")
                         .integer("max_depth", "Max recursion depth (default 8).")
+                        .strArray("exclude_namespaces", "Ignore recipes whose id is in these namespaces, e.g. [\"allthecompressed\"].")
+                        .strArray("raw_materials", "Items or #tags to always treat as raw (never expanded), e.g. [\"#c:ingots\"].")
                         .enumStr("source", SOURCE_DESC, false, "auto", "client", "server"))
                 .handler(a -> ToolResult.json(CraftPlanner.plan(a, src(a)))));
 
@@ -116,7 +118,7 @@ final class RecipeTools {
                 .schema(Schema.of().str("type", "Recipe type (default minecraft:crafting).")
                         .idFilters()
                         .enumStr("source", SOURCE_DESC, false, "auto", "client", "server")
-                        .paging())
+                        .paging(50))
                 .handler(a -> ToolResult.json(craftableNow(a))));
     }
 

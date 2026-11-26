@@ -22,7 +22,7 @@ public final class SseHub {
     private static final int MAX_STREAMS = 8;
     private static final int MAX_QUEUE = 500;
 
-    private record Stream(BlockingQueue<String> queue, long openedAt) {}
+    private record Stream(BlockingQueue<String> queue, long openedAt, boolean channel) {}
 
     private static final CopyOnWriteArrayList<Stream> STREAMS = new CopyOnWriteArrayList<>();
     private static final AtomicLong IDS = new AtomicLong();
@@ -31,6 +31,13 @@ public final class SseHub {
 
     public static int openStreams() {
         return STREAMS.size();
+    }
+
+    /** Streams opened by the stdio bridge, i.e. clients that surface pushes as Claude Code channel messages. */
+    public static int channelStreams() {
+        int n = 0;
+        for (Stream s : STREAMS) if (s.channel) n++;
+        return n;
     }
 
     /** Queues a JSON-RPC notification for every connected client. Safe from any thread. */
@@ -51,14 +58,15 @@ public final class SseHub {
             STREAMS.remove(oldest);
             oldest.queue.offer("");
         }
-        Stream s = new Stream(new LinkedBlockingQueue<>(), System.currentTimeMillis());
+        boolean channel = "channel-bridge".equalsIgnoreCase(ex.getRequestHeaders().getFirst("X-Yamc-Client"));
+        Stream s = new Stream(new LinkedBlockingQueue<>(), System.currentTimeMillis(), channel);
         ex.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
         ex.getResponseHeaders().set("Cache-Control", "no-cache");
         String session = ex.getRequestHeaders().getFirst("Mcp-Session-Id");
         if (session != null) ex.getResponseHeaders().set("Mcp-Session-Id", session);
         ex.sendResponseHeaders(200, 0);
         STREAMS.add(s);
-        YamcMcp.LOGGER.info("MCP notification stream opened ({} open)", STREAMS.size());
+        YamcMcp.LOGGER.info("MCP notification stream opened ({}; {} open)", channel ? "channel bridge" : "plain HTTP client", STREAMS.size());
         try (OutputStream os = ex.getResponseBody()) {
             os.write(": yamc-mcp notification stream\n\n".getBytes(StandardCharsets.UTF_8));
             os.flush();

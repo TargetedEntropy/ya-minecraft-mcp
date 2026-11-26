@@ -1,5 +1,6 @@
 package dev.yamc.mcp.neoforge;
 
+//? if neoforge {
 import dev.yamc.mcp.platform.Settings;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
@@ -67,3 +68,4 @@ final class NeoForgeConfig implements Settings {
     @Override public boolean pushEnabled() { return PUSH_ENABLED.get(); }
     @Override public List<String> pushEventTypes() { return List.copyOf(PUSH_EVENT_TYPES.get()); }
 }
+//?}

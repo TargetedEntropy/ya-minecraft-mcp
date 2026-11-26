@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "id": "${id}",
+  "version": "${version}",
+  "name": "${name}",
+  "description": "Client-side Model Context Protocol (MCP) server. Exposes player state, registries, tags, recipes and world information to AI assistants such as Claude Code over a local HTTP endpoint.",
+  "authors": ["TargetedEntropy"],
+  "contact": {
+    "sources": "https://github.com/TargetedEntropy/ya-minecraft-mcp",
+    "issues": "https://github.com/TargetedEntropy/ya-minecraft-mcp/issues"
+  },
+  "license": "${license}",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["dev.yamc.mcp.fabric.YamcMcpFabric"]
+  },
+  "mixins": ["yamcmcp.mixins.json"],
+  "accessWidener": "yamcmcp.ct",
+  "depends": {
+    "fabricloader": ">=${loader}",
+    "minecraft": "${minecraft}",
+    "fabric-lifecycle-events-v1": "*",
+    "fabric-message-api-v1": "*",
+    "fabric-networking-api-v1": "*",
+    "fabric-rendering-v1": "*",
+    "fabric-command-api-v2": "*",
+    "fabric-recipe-api-v1": "*",
+    "java": ">=21"
+  }
+}

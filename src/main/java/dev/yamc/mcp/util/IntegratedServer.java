@@ -5,7 +5,7 @@ import dev.yamc.mcp.mcp.ToolException;
 import net.minecraft.client.Minecraft;
 import net.minecraft.server.MinecraftServer;
 
-import javax.annotation.Nullable;
+import org.jetbrains.annotations.Nullable;
 
 /** The singleplayer / LAN-host server, when there is one and config allows reading from it. */
 public final class IntegratedServer {

@@ -1,5 +1,6 @@
 package dev.yamc.mcp.tools;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.google.gson.JsonObject;
 import dev.yamc.mcp.client.EventLog;
 import dev.yamc.mcp.client.Markers;
@@ -315,7 +316,7 @@ final class ActionTools {
             case "drop_stack" -> {
                 if (p.drop(true)) p.swing(InteractionHand.MAIN_HAND);
             }
-            case "swap_hands" -> KeyMapping.click(mc.options.keySwapOffhand.getKey());
+            case "swap_hands" -> KeyMapping.click(InputConstants.getKey(mc.options.keySwapOffhand.saveString()));
             case "respawn" -> {
                 if (!p.isDeadOrDying()) throw new ToolException("Player is not dead.");
                 p.respawn();

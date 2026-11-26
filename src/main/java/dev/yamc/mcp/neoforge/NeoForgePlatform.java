@@ -1,5 +1,6 @@
 package dev.yamc.mcp.neoforge;
 
+//? if neoforge {
 import com.mojang.serialization.Codec;
 import dev.yamc.mcp.YamcMcp;
 import dev.yamc.mcp.platform.Platform;
@@ -71,3 +72,4 @@ final class NeoForgePlatform implements Platform {
         return new CustomIngredient(String.valueOf(NeoForgeRegistries.INGREDIENT_TYPES.getKey(custom.getType())), custom.hashCode());
     }
 }
+//?}

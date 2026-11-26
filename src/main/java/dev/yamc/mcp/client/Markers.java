@@ -10,7 +10,6 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.RenderStateShard;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -28,17 +27,28 @@ public final class Markers {
     private static final List<Marker> MARKERS = new ArrayList<>();
     private static final AtomicInteger IDS = new AtomicInteger();
 
-    private static final RenderType LINES_SEE_THROUGH = RenderType.create("yamcmcp_lines_see_through",
-            DefaultVertexFormat.POSITION_COLOR_NORMAL, VertexFormat.Mode.LINES, 1536, false, false,
-            RenderType.CompositeState.builder()
-                    .setShaderState(RenderStateShard.RENDERTYPE_LINES_SHADER)
-                    .setLineState(new RenderStateShard.LineStateShard(OptionalDouble.of(2.5)))
-                    .setLayeringState(RenderStateShard.VIEW_OFFSET_Z_LAYERING)
-                    .setTransparencyState(RenderStateShard.TRANSLUCENT_TRANSPARENCY)
-                    .setWriteMaskState(RenderStateShard.COLOR_WRITE)
-                    .setCullState(RenderStateShard.NO_CULL)
-                    .setDepthTestState(RenderStateShard.NO_DEPTH_TEST)
-                    .createCompositeState(false));
+    private static final RenderType LINES_SEE_THROUGH = Types.linesSeeThrough();
+
+    /** Subclass only to reach RenderType's protected state shards (no access transformer needed on any loader). */
+    private abstract static class Types extends RenderType {
+        private Types() {
+            super(null, null, null, 0, false, false, null, null);
+        }
+
+        static RenderType linesSeeThrough() {
+            return create("yamcmcp_lines_see_through",
+                    DefaultVertexFormat.POSITION_COLOR_NORMAL, VertexFormat.Mode.LINES, 1536, false, false,
+                    CompositeState.builder()
+                            .setShaderState(RENDERTYPE_LINES_SHADER)
+                            .setLineState(new LineStateShard(OptionalDouble.of(2.5)))
+                            .setLayeringState(VIEW_OFFSET_Z_LAYERING)
+                            .setTransparencyState(TRANSLUCENT_TRANSPARENCY)
+                            .setWriteMaskState(COLOR_WRITE)
+                            .setCullState(NO_CULL)
+                            .setDepthTestState(NO_DEPTH_TEST)
+                            .createCompositeState(false));
+        }
+    }
 
     public Markers() {}
 

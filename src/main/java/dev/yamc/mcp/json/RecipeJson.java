@@ -55,7 +55,7 @@ public final class RecipeJson {
             o.addProperty("custom_type", custom.type());
         } else {
             JsonArray tags = new JsonArray();
-            for (Ingredient.Value v : ing.getValues()) if (v instanceof Ingredient.TagValue tv) tags.add("#" + tv.tag().location());
+            for (Ingredient.Value v : ing.values) if (v instanceof Ingredient.TagValue tv) tags.add("#" + tv.tag().location());
             if (!tags.isEmpty()) o.add("tags", tags);
         }
         JsonArray arr = new JsonArray();

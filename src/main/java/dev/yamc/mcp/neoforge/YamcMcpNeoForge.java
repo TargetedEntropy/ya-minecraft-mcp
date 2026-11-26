@@ -1,5 +1,6 @@
 package dev.yamc.mcp.neoforge;
 
+//? if neoforge {
 import dev.yamc.mcp.YamcMcp;
 import dev.yamc.mcp.client.ClientEvents;
 import net.neoforged.api.distmarker.Dist;
@@ -40,3 +41,4 @@ public final class YamcMcpNeoForge {
         bus.addListener(RegisterClientCommandsEvent.class, e -> e.getDispatcher().register(YamcMcp.command()));
     }
 }
+//?}

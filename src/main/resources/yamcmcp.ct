@@ -1,0 +1,24 @@
+classTweaker v2 named
+# Fabric counterpart of META-INF/accesstransformer.cfg (NeoForge); keep the two in step.
+# Client advancement progress (read-only access for the advancements tool)
+accessible field net/minecraft/client/multiplayer/ClientAdvancements progress Ljava/util/Map;
+# Player statistics map
+accessible field net/minecraft/stats/StatsCounter stats Lit/unimi/dsi/fastutil/objects/Object2IntMap;
+# Boss bars, titles and action bar text for the hud tool
+accessible field net/minecraft/client/gui/components/BossHealthOverlay events Ljava/util/Map;
+accessible field net/minecraft/client/gui/Gui title Lnet/minecraft/network/chat/Component;
+accessible field net/minecraft/client/gui/Gui subtitle Lnet/minecraft/network/chat/Component;
+accessible field net/minecraft/client/gui/Gui titleTime I
+accessible field net/minecraft/client/gui/Gui overlayMessageString Lnet/minecraft/network/chat/Component;
+accessible field net/minecraft/client/gui/Gui overlayMessageTime I
+# Fishing bobber state for fishing_status / fish (bite flag is synced to the client)
+accessible field net/minecraft/world/entity/projectile/FishingHook biting Z
+accessible field net/minecraft/world/entity/projectile/FishingHook currentState Lnet/minecraft/world/entity/projectile/FishingHook$FishHookState;
+accessible class net/minecraft/world/entity/projectile/FishingHook$FishHookState
+# Ingredient options, for the tags an ingredient accepts
+accessible field net/minecraft/world/item/crafting/Ingredient values [Lnet/minecraft/world/item/crafting/Ingredient$Value;
+accessible class net/minecraft/world/item/crafting/Ingredient$Value
+accessible class net/minecraft/world/item/crafting/Ingredient$TagValue
+# Custom see-through line render type for highlight markers (NeoForge already exposes these)
+accessible method net/minecraft/client/renderer/RenderType create (Ljava/lang/String;Lcom/mojang/blaze3d/vertex/VertexFormat;Lcom/mojang/blaze3d/vertex/VertexFormat$Mode;IZZLnet/minecraft/client/renderer/RenderType$CompositeState;)Lnet/minecraft/client/renderer/RenderType$CompositeRenderType;
+accessible class net/minecraft/client/renderer/RenderType$CompositeRenderType

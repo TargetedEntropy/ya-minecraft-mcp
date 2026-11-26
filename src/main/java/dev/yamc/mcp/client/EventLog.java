@@ -1,0 +1,83 @@
+package dev.yamc.mcp.client;
+
+import com.google.gson.JsonObject;
+import dev.yamc.mcp.Config;
+
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.function.Predicate;
+
+/** Thread-safe ring buffer of game events with monotonically increasing sequence numbers. */
+public final class EventLog {
+    public record Event(long seq, long time, String type, JsonObject data) {
+        public JsonObject toJson() {
+            JsonObject o = new JsonObject();
+            o.addProperty("seq", seq);
+            o.addProperty("time", time);
+            o.addProperty("type", type);
+            for (var e : data.entrySet()) o.add(e.getKey(), e.getValue());
+            return o;
+        }
+    }
+
+    private static final ArrayDeque<Event> EVENTS = new ArrayDeque<>();
+    private static long seq;
+    private static long lastPolled;
+
+    private EventLog() {}
+
+    public static void add(String type, JsonObject data) {
+        synchronized (EVENTS) {
+            EVENTS.addLast(new Event(++seq, System.currentTimeMillis(), type, data));
+            int max = Config.EVENT_BUFFER_SIZE.get();
+            while (EVENTS.size() > max) EVENTS.removeFirst();
+            EVENTS.notifyAll();
+        }
+    }
+
+    public static long latest() {
+        synchronized (EVENTS) {
+            return seq;
+        }
+    }
+
+    public static long lastPolled() {
+        synchronized (EVENTS) {
+            return lastPolled;
+        }
+    }
+
+    public static List<Event> since(long after, Set<String> types, int limit, boolean markPolled) {
+        synchronized (EVENTS) {
+            List<Event> out = new ArrayList<>();
+            for (Event e : EVENTS) {
+                if (e.seq <= after) continue;
+                if (!types.isEmpty() && !types.contains(e.type)) continue;
+                out.add(e);
+            }
+            if (out.size() > limit) out = new ArrayList<>(out.subList(out.size() - limit, out.size()));
+            if (markPolled) lastPolled = seq;
+            return out;
+        }
+    }
+
+    /** Blocks until an event after {@code after} matches, or the timeout elapses. Returns null on timeout. */
+    public static Event waitFor(long after, Predicate<Event> match, long timeoutMs) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + timeoutMs;
+        synchronized (EVENTS) {
+            long cursor = after;
+            while (true) {
+                for (Event e : EVENTS) {
+                    if (e.seq <= cursor) continue;
+                    if (match.test(e)) return e;
+                }
+                cursor = seq;
+                long left = deadline - System.currentTimeMillis();
+                if (left <= 0) return null;
+                EVENTS.wait(left);
+            }
+        }
+    }
+}

@@ -29,12 +29,15 @@ public final class EventLog {
     private EventLog() {}
 
     public static void add(String type, JsonObject data) {
+        Event ev;
         synchronized (EVENTS) {
-            EVENTS.addLast(new Event(++seq, System.currentTimeMillis(), type, data));
+            ev = new Event(++seq, System.currentTimeMillis(), type, data);
+            EVENTS.addLast(ev);
             int max = Config.EVENT_BUFFER_SIZE.get();
             while (EVENTS.size() > max) EVENTS.removeFirst();
             EVENTS.notifyAll();
         }
+        PushNotifier.onEvent(ev);
     }
 
     public static long latest() {

@@ -49,7 +49,8 @@ public final class McpHttpServer {
     public void start() throws IOException {
         server = HttpServer.create(new InetSocketAddress(bind, port), 32);
         AtomicInteger n = new AtomicInteger();
-        pool = Executors.newFixedThreadPool(6, r -> {
+        // cached pool: long-lived GET notification streams each hold a thread
+        pool = Executors.newCachedThreadPool(r -> {
             Thread t = new Thread(r, "yamcmcp-http-" + n.incrementAndGet());
             t.setDaemon(true);
             return t;
@@ -91,8 +92,13 @@ public final class McpHttpServer {
                 case "POST" -> post(ex);
                 case "DELETE" -> send(ex, 200, "");
                 case "GET" -> {
-                    ex.getResponseHeaders().add("Allow", "POST, DELETE");
-                    send(ex, 405, "");
+                    String accept = ex.getRequestHeaders().getFirst("Accept");
+                    if (accept != null && accept.contains("text/event-stream")) {
+                        SseHub.serve(ex);
+                    } else {
+                        ex.getResponseHeaders().add("Allow", "GET, POST, DELETE");
+                        send(ex, 405, "");
+                    }
                 }
                 case "OPTIONS" -> send(ex, 204, "");
                 default -> send(ex, 405, "");

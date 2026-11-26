@@ -64,7 +64,9 @@ public final class YamcMcp {
             server.start();
             LOGGER.info("YAMC MCP server listening on {} with {} tools", server.url(), registry.all().size());
             LOGGER.info("Connect Claude Code with: {}", connectCommand());
-            Files.writeString(FMLPaths.CONFIGDIR.get().resolve("yamcmcp-connect.txt"), connectCommand() + System.lineSeparator(), StandardCharsets.UTF_8);
+            Files.writeString(FMLPaths.CONFIGDIR.get().resolve("yamcmcp-connect.txt"),
+                    "# Plain HTTP (tools only, poll events):" + System.lineSeparator() + connectCommand() + System.lineSeparator() + System.lineSeparator()
+                            + "# Channel mode (tools + pushed events):" + System.lineSeparator() + channelCommand() + System.lineSeparator(), StandardCharsets.UTF_8);
         } catch (Exception e) {
             startError = e.toString();
             LOGGER.error("Failed to start YAMC MCP server", e);
@@ -91,11 +93,31 @@ public final class YamcMcp {
         return cmd;
     }
 
+    /** Claude Code command using the stdio bridge so the server is loaded as a channel (push notifications). */
+    public static String channelCommand() {
+        String jar;
+        try {
+            jar = net.neoforged.fml.ModList.get().getModFileById(MOD_ID).getFile().getFilePath().toAbsolutePath().toString();
+        } catch (Exception e) {
+            jar = "<path to yamcmcp.jar>";
+        }
+        String url = server != null ? server.url() : "http://127.0.0.1:" + Config.PORT.get() + "/mcp";
+        String cmd = "claude mcp add minecraft -- java -cp \"" + jar + "\" dev.yamc.mcp.bridge.StdioBridge --url " + url;
+        if (token != null) cmd += " --token-file \"" + FMLPaths.CONFIGDIR.get().resolve("yamcmcp-token.txt").toAbsolutePath() + "\"";
+        return cmd + "\n# then start Claude Code with: claude --dangerously-load-development-channels server:minecraft";
+    }
+
     private static void registerCommands(RegisterClientCommandsEvent e) {
         e.getDispatcher().register(Commands.literal("yamcmcp")
                 .executes(c -> status())
                 .then(Commands.literal("status").executes(c -> status()))
-                .then(Commands.literal("connect").executes(c -> {
+                .then(Commands.literal("connect").then(Commands.literal("channel").executes(c -> {
+                    String cmd = channelCommand();
+                    Minecraft.getInstance().keyboardHandler.setClipboard(cmd);
+                    msg(Component.literal("[YAMC MCP] ").withStyle(ChatFormatting.AQUA)
+                            .append(Component.literal("Channel (push notifications) setup copied to clipboard. Start Claude Code with --dangerously-load-development-channels server:minecraft").withStyle(ChatFormatting.WHITE)));
+                    return Command.SINGLE_SUCCESS;
+                })).executes(c -> {
                     String cmd = connectCommand();
                     Minecraft.getInstance().keyboardHandler.setClipboard(cmd);
                     msg(Component.literal("[YAMC MCP] ").withStyle(ChatFormatting.AQUA)
@@ -114,7 +136,8 @@ public final class YamcMcp {
             long ago = server.lastRequestMillis == 0 ? -1 : (System.currentTimeMillis() - server.lastRequestMillis) / 1000;
             msg(Component.literal("[YAMC MCP] " + server.url() + " | requests: " + server.requestCount.get()
                     + " | last client: " + server.lastClient + (ago >= 0 ? " (" + ago + "s ago)" : "")
-                    + " | actions " + (Config.ENABLE_ACTIONS.get() ? "on" : "off")).withStyle(ChatFormatting.AQUA));
+                    + " | actions " + (Config.ENABLE_ACTIONS.get() ? "on" : "off")
+                    + " | push streams: " + dev.yamc.mcp.mcp.SseHub.openStreams()).withStyle(ChatFormatting.AQUA));
         }
         return Command.SINGLE_SUCCESS;
     }

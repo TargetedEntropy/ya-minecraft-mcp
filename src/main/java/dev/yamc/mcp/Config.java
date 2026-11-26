@@ -13,6 +13,8 @@ public final class Config {
     public static final ModConfigSpec.BooleanValue ENABLE_LOCATE;
     public static final ModConfigSpec.IntValue CLIENT_THREAD_TIMEOUT_MS;
     public static final ModConfigSpec.IntValue EVENT_BUFFER_SIZE;
+    public static final ModConfigSpec.BooleanValue PUSH_ENABLED;
+    public static final ModConfigSpec.ConfigValue<java.util.List<? extends String>> PUSH_EVENT_TYPES;
 
     static {
         ModConfigSpec.Builder b = new ModConfigSpec.Builder();
@@ -35,6 +37,14 @@ public final class Config {
                 .define("enableLocate", true);
         EVENT_BUFFER_SIZE = b.comment("Number of recent game events kept for events_since / wait_for_event.")
                 .defineInRange("eventBufferSize", 1000, 50, 20000);
+        b.pop();
+        b.push("push");
+        PUSH_ENABLED = b.comment("Push game events to connected MCP clients as notifications (no polling needed).")
+                .define("enabled", true);
+        PUSH_EVENT_TYPES = b.comment("Event types to push. Empty = defaults (death, damage, dimension_change, level_up, gamemode_change, join_world, leave_world).",
+                        "All types: damage, heal, death, item_gained, item_lost, effect_added, effect_removed, dimension_change, biome_change,",
+                        "level_up, gamemode_change, chat, system_message, actionbar, screen_open, screen_close, join_world, leave_world")
+                .defineListAllowEmpty("eventTypes", java.util.List.of(), () -> "", o -> o instanceof String);
         b.pop();
         SPEC = b.build();
     }

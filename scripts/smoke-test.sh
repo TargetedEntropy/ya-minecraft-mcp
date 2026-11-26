@@ -18,6 +18,13 @@ if port_busy; then echo "port $PORT already in use (another client running?)"; e
 mkdir -p "run-test/$NODE"
 [ -f "run-test/$NODE/options.txt" ] || printf 'onboardAccessibility:false\npauseOnLostFocus:false\ntutorialStep:none\nsoundCategory_master:0.0\n' >"run-test/$NODE/options.txt"
 
+# Headless (Xvfb) has no GLX visual for NeoForge's early loading window on newer versions: turn it off.
+if [ -z "${DISPLAY:-}" ] && [[ "$NODE" == *-neoforge ]]; then
+    mkdir -p "run-test/$NODE/config"
+    F="run-test/$NODE/config/fml.toml"
+    if [ -f "$F" ]; then sed -i 's/^earlyWindowControl = true/earlyWindowControl = false/' "$F"; else echo 'earlyWindowControl = false' >"$F"; fi
+fi
+
 RUN=(./gradlew ":$NODE:runTestClient" --no-configuration-cache)
 [ -z "${DISPLAY:-}" ] && RUN=(xvfb-run -a "${RUN[@]}")
 "${RUN[@]}" >"$LOG" 2>&1 &

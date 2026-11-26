@@ -27,9 +27,12 @@ public final class YamcMcpFabric implements ClientModInitializer {
         ClientReceiveMessageEvents.GAME.register((message, overlay) -> ClientEvents.chat(message, null, true, overlay));
         ClientPlayConnectionEvents.JOIN.register((handler, sender, mc) -> ClientEvents.loggingIn());
         ClientPlayConnectionEvents.DISCONNECT.register((handler, mc) -> ClientEvents.loggingOut());
-        //? if >=1.21.9 {
+        //? if >=26.1 {
+        /^net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents.AFTER_SOLID_FEATURES.register(ctx ->
+                ClientEvents.renderLevel(ctx.poseStack(), dev.yamc.mcp.util.Mc.camera(net.minecraft.client.Minecraft.getInstance())));
+        ^///?} elif >=1.21.9 {
         /^net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents.AFTER_ENTITIES.register(ctx ->
-                ClientEvents.renderLevel(ctx.matrices(), net.minecraft.client.Minecraft.getInstance().gameRenderer.getMainCamera()));
+                ClientEvents.renderLevel(ctx.matrices(), dev.yamc.mcp.util.Mc.camera(net.minecraft.client.Minecraft.getInstance())));
         ^///?} else
         net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents.AFTER_ENTITIES.register(ctx -> ClientEvents.renderLevel(ctx.matrixStack(), ctx.camera()));
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registries) -> dispatcher.register(YamcMcp.command()));

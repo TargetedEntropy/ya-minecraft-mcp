@@ -31,6 +31,7 @@ public final class ClientEvents {
     /** End of every client tick. */
     public static void tick() {
         WATCHER.tick();
+        Markers.tick();
     }
 
     /**

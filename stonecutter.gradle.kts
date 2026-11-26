@@ -29,6 +29,10 @@ stonecutter parameters {
             replace("net.minecraft.world.entity.animal.WaterAnimal", "net.minecraft.world.entity.animal.fish.WaterAnimal")
             replace("net.minecraft.world.entity.npc.AbstractVillager", "net.minecraft.world.entity.npc.villager.AbstractVillager")
         }
+        // 26.1+ ships unobfuscated: the class tweaker names official (= Mojang) names directly.
+        string(current.parsed >= "26.1") {
+            replace("classTweaker v2 named", "classTweaker v2 official")
+        }
     }
 }
 

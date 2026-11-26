@@ -30,6 +30,9 @@ stonecutter {
         match("1.21.8", "fabric", "neoforge")
         match("1.21.10", "fabric", "neoforge")
         match("1.21.11", "fabric", "neoforge")
+        match("26.1.2", "fabric", "neoforge")
+        match("26.2", "fabric", "neoforge")
+        match("26.3", "fabric", "neoforge")
         // The state the source is committed in (`./gradlew "Reset active project"` before committing).
         vcsVersion = "1.21.1-neoforge"
     }

@@ -144,6 +144,6 @@ public final class YamcMcp {
 
     private static void msg(Component c) {
         var p = Minecraft.getInstance().player;
-        if (p != null) p.displayClientMessage(c, false);
+        if (p != null) Mc.message(p, c, false);
     }
 }

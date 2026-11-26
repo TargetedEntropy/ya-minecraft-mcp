@@ -139,7 +139,7 @@ final class FishingJob implements Ticker.Job<JsonObject> {
 
     private void use(LocalPlayer p) {
         InteractionHand hand = FishingTools.rodHand(p);
-        if (hand != null && Mc.swings(mc.gameMode.useItem(p, hand))) p.swing(hand);
+        if (hand != null && Mc.swings(mc.gameMode.useItem(p, hand))) Mc.swing(p, hand);
     }
 
     private JsonObject reelAndStop(LocalPlayer p, String why) {

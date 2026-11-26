@@ -6,11 +6,19 @@ accessible field net/minecraft/client/multiplayer/ClientAdvancements progress Lj
 accessible field net/minecraft/stats/StatsCounter stats Lit/unimi/dsi/fastutil/objects/Object2IntMap;
 # Boss bars, titles and action bar text for the hud tool
 accessible field net/minecraft/client/gui/components/BossHealthOverlay events Ljava/util/Map;
+#? if >=26.2 {
+#accessible field net/minecraft/client/gui/Hud title Lnet/minecraft/network/chat/Component;
+#accessible field net/minecraft/client/gui/Hud subtitle Lnet/minecraft/network/chat/Component;
+#accessible field net/minecraft/client/gui/Hud titleTime I
+#accessible field net/minecraft/client/gui/Hud overlayMessageString Lnet/minecraft/network/chat/Component;
+#accessible field net/minecraft/client/gui/Hud overlayMessageTime I
+#?} else {
 accessible field net/minecraft/client/gui/Gui title Lnet/minecraft/network/chat/Component;
 accessible field net/minecraft/client/gui/Gui subtitle Lnet/minecraft/network/chat/Component;
 accessible field net/minecraft/client/gui/Gui titleTime I
 accessible field net/minecraft/client/gui/Gui overlayMessageString Lnet/minecraft/network/chat/Component;
 accessible field net/minecraft/client/gui/Gui overlayMessageTime I
+#?}
 # Fishing bobber state for fishing_status / fish (bite flag is synced to the client)
 accessible field net/minecraft/world/entity/projectile/FishingHook biting Z
 accessible field net/minecraft/world/entity/projectile/FishingHook currentState Lnet/minecraft/world/entity/projectile/FishingHook$FishHookState;

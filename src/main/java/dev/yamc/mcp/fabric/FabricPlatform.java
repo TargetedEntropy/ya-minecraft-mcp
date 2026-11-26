@@ -63,6 +63,9 @@ final class FabricPlatform implements Platform {
     public Map<ResourceKey<?>, Codec<?>> dataPackCodecs() {
         // Fabric API appends mod registries to these vanilla lists.
         Map<ResourceKey<?>, Codec<?>> m = new HashMap<>();
+        //? if >=26.3 {
+        /^for (var d : RegistryDataLoader.WORLD_REGISTRIES) m.put(d.key(), d.elementCodec());
+        ^///?} else
         for (var d : RegistryDataLoader.WORLDGEN_REGISTRIES) m.put(d.key(), d.elementCodec());
         for (var d : RegistryDataLoader.DIMENSION_REGISTRIES) m.put(d.key(), d.elementCodec());
         return m;

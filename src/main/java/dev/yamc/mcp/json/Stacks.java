@@ -44,10 +44,9 @@ public final class Stacks {
             o.add("components", Json.encode(DataComponentPatch.CODEC, patch, regs));
         } else if (!patch.isEmpty()) {
             JsonArray keys = new JsonArray();
-            for (var en : patch.entrySet()) {
-                var k = BuiltInRegistries.DATA_COMPONENT_TYPE.getKey(en.getKey());
-                keys.add((en.getValue().isPresent() ? "" : "!") + k);
-            }
+            var split = patch.split();
+            for (var t : split.added().keySet()) keys.add(String.valueOf(BuiltInRegistries.DATA_COMPONENT_TYPE.getKey(t)));
+            for (var t : split.removed()) keys.add("!" + BuiltInRegistries.DATA_COMPONENT_TYPE.getKey(t));
             o.add("component_keys", keys);
         }
         return o;

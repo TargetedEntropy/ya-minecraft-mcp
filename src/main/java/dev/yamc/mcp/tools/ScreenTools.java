@@ -47,7 +47,7 @@ final class ScreenTools {
         Minecraft mc = Ctx.mc();
         LocalPlayer p = Ctx.player();
         JsonObject o = new JsonObject();
-        var screen = mc.screen;
+        var screen = Mc.screen(mc);
         if (screen == null) {
             o.addProperty("open", false);
             o.addProperty("note", "No screen is open. The player inventory is container_id 0 (use open_inventory or player_inventory).");
@@ -148,7 +148,11 @@ final class ScreenTools {
             o.add("sidebar", s);
         }
         JsonArray bars = new JsonArray();
-        for (var be : mc.gui.getBossOverlay().events.values()) {
+        //? if >=26.2 {
+        /*net.minecraft.client.gui.Hud hud = mc.gui.hud;
+        *///?} else
+        net.minecraft.client.gui.Gui hud = mc.gui;
+        for (var be : hud.getBossOverlay().events.values()) {
             JsonObject b = new JsonObject();
             b.addProperty("name", be.getName().getString());
             b.addProperty("progress", Json.round(be.getProgress()));
@@ -156,12 +160,12 @@ final class ScreenTools {
             bars.add(b);
         }
         o.add("boss_bars", bars);
-        if (mc.gui.titleTime > 0) {
-            if (mc.gui.title != null) o.addProperty("title", mc.gui.title.getString());
-            if (mc.gui.subtitle != null) o.addProperty("subtitle", mc.gui.subtitle.getString());
+        if (hud.titleTime > 0) {
+            if (hud.title != null) o.addProperty("title", hud.title.getString());
+            if (hud.subtitle != null) o.addProperty("subtitle", hud.subtitle.getString());
         }
-        if (mc.gui.overlayMessageTime > 0 && mc.gui.overlayMessageString != null)
-            o.addProperty("action_bar", mc.gui.overlayMessageString.getString());
+        if (hud.overlayMessageTime > 0 && hud.overlayMessageString != null)
+            o.addProperty("action_bar", hud.overlayMessageString.getString());
         return o;
     }
 }

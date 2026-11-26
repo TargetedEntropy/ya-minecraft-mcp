@@ -72,7 +72,7 @@ final class WorldTools {
         JsonObject o = new JsonObject();
         o.addProperty("dimension", Mc.id(l.dimension()).toString());
         o.addProperty("dimension_type", l.dimensionTypeRegistration().getRegisteredName());
-        long dayTime = l.getDayTime();
+        long dayTime = Mc.dayTime(l);
         o.addProperty("day", dayTime / 24000L);
         o.addProperty("time_of_day", dayTime % 24000L);
         o.addProperty("game_time", l.getGameTime());
@@ -81,8 +81,8 @@ final class WorldTools {
         o.addProperty("is_day", Mc.isDay(l));
         o.addProperty("raining", l.isRaining());
         o.addProperty("thundering", l.isThundering());
-        o.addProperty("moon_phase", (int) (l.getDayTime() / 24000L % 8L));
-        o.addProperty("difficulty", l.getDifficulty().getKey());
+        o.addProperty("moon_phase", (int) (dayTime / 24000L % 8L));
+        o.addProperty("difficulty", l.getDifficulty().getSerializedName());
         o.addProperty("hardcore", l.getLevelData().isHardcore());
         o.addProperty("min_build_height", Mc.minY(l));
         o.addProperty("max_build_height", Mc.maxBuildHeight(l));

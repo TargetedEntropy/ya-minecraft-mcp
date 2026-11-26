@@ -115,7 +115,7 @@ final class InfoTools {
                     CompletableFuture<NativeImage> shot = new CompletableFuture<>();
                     String screen = ClientThread.call(() -> {
                         Mc.screenshot(mc, shot::complete);
-                        return mc.screen == null ? "in-game" : mc.screen.getClass().getSimpleName();
+                        return Mc.screen(mc) == null ? "in-game" : Mc.screen(mc).getClass().getSimpleName();
                     });
                     try (NativeImage img = shot.get(10, TimeUnit.SECONDS)) {
                         NativeImage out = img;
@@ -151,13 +151,13 @@ final class InfoTools {
         IdFilter f = IdFilter.from(a, "-", "query", "-");
         Map<AdvancementHolder, AdvancementProgress> progress = adv.progress;
         List<AdvancementHolder> list = new ArrayList<>();
-        for (var node : adv.getTree().nodes()) {
+        for (var node : Mc.advancementNodes(adv)) {
             AdvancementHolder h = node.holder();
             if (!recipes && h.id().getPath().startsWith("recipes/")) continue;
             AdvancementProgress p = progress.get(h);
             String st = p == null || !p.hasProgress() ? "not_started" : p.isDone() ? "done" : "in_progress";
             if (!"all".equals(status) && !status.equals(st)) continue;
-            String title = h.value().display().map(d -> d.getTitle().getString()).orElse(null);
+            String title = h.value().display().map(d -> Mc.title(d).getString()).orElse(null);
             if (!f.test(h.id(), () -> title)) continue;
             list.add(h);
         }
@@ -166,9 +166,9 @@ final class InfoTools {
             JsonObject o = new JsonObject();
             o.addProperty("id", h.id().toString());
             h.value().display().ifPresent(d -> {
-                o.addProperty("title", d.getTitle().getString());
-                o.addProperty("description", d.getDescription().getString());
-                o.addProperty("frame", d.getType().getSerializedName());
+                o.addProperty("title", Mc.title(d).getString());
+                o.addProperty("description", Mc.description(d).getString());
+                o.addProperty("frame", Mc.frame(d));
             });
             h.value().parent().ifPresent(pp -> o.addProperty("parent", pp.toString()));
             AdvancementProgress p = progress.get(h);

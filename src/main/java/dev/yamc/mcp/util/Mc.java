@@ -147,14 +147,14 @@ public final class Mc {
     // ------------------------------------------------------------------ game objects
 
     public static Component itemName(Item i) {
-        //? if >=1.21.2 {
-        /*return i.getName();
-        *///?} else
-        return i.getDescription();
+        return new ItemStack(i).getHoverName();
     }
 
     public static ItemStack craftingRemainder(Item i) {
-        //? if >=1.21.2 {
+        //? if >=26.1 {
+        /*var t = i.getCraftingRemainder();
+        return t == null ? ItemStack.EMPTY : t.create();
+        *///?} elif >=1.21.2 {
         /*return i.getCraftingRemainder();
         *///?} else
         return i.hasCraftingRemainingItem() ? new ItemStack(i.getCraftingRemainingItem()) : ItemStack.EMPTY;
@@ -206,23 +206,88 @@ public final class Mc {
         return Direction.getNearest(x, y, z);
     }
 
+    // ------------------------------------------------------------------ advancements
+
+    public static java.util.Collection<net.minecraft.advancements.AdvancementNode> advancementNodes(net.minecraft.client.multiplayer.ClientAdvancements a) {
+        //? if >=26.3 {
+        /*return a.tree().nodes();
+        *///?} else
+        return a.getTree().nodes();
+    }
+
+    public static Component title(net.minecraft.advancements.DisplayInfo d) {
+        //? if >=26.3 {
+        /*return d.title();
+        *///?} else
+        return d.getTitle();
+    }
+
+    public static Component description(net.minecraft.advancements.DisplayInfo d) {
+        //? if >=26.3 {
+        /*return d.description();
+        *///?} else
+        return d.getDescription();
+    }
+
+    public static String frame(net.minecraft.advancements.DisplayInfo d) {
+        //? if >=26.3 {
+        /*return d.type().getSerializedName();
+        *///?} else
+        return d.getType().getSerializedName();
+    }
+
     // ------------------------------------------------------------------ interaction
+
+    /** Right-click an entity, as the crosshair would. */
+    public static InteractionResult interact(Minecraft mc, net.minecraft.world.entity.player.Player p, net.minecraft.world.entity.Entity target, net.minecraft.world.InteractionHand hand) {
+        //? if >=26.1 {
+        /*return mc.gameMode.interact(p, target, new net.minecraft.world.phys.EntityHitResult(target), hand);
+        *///?} else
+        return mc.gameMode.interact(p, target, hand);
+    }
 
     /** Whether the client should swing the arm for this result. */
     public static boolean swings(InteractionResult r) {
-        //? if >=1.21.2 {
+        //? if >=26.3 {
+        /*return r instanceof InteractionResult.Success s && s.swingSource() == InteractionResult.SwingSource.PREDICTED;
+        *///?} elif >=1.21.2 {
         /*return r instanceof InteractionResult.Success s && s.swingSource() == InteractionResult.SwingSource.CLIENT;
         *///?} else
         return r.shouldSwing();
     }
 
+    public static void swing(net.minecraft.world.entity.LivingEntity e, net.minecraft.world.InteractionHand hand) {
+        //? if >=26.3 {
+        /*e.swing(hand, net.minecraft.world.item.component.SwingAnimation.DEFAULT, false);
+        *///?} else
+        e.swing(hand);
+    }
+
+    /** Drops the selected stack (or one item of it); true if something was dropped. */
+    public static boolean dropSelected(Minecraft mc, net.minecraft.client.player.LocalPlayer p, boolean fullStack) {
+        //? if >=26.3 {
+        /*if (p.getMainHandItem().isEmpty()) return false;
+        mc.gameMode.dropItem(p, fullStack);
+        return true;
+        *///?} else
+        return p.drop(fullStack);
+    }
+
     /** A short lower-case name for the result: success, consume, pass, fail, ... */
     public static String name(InteractionResult r) {
         //? if >=1.21.2 {
-        /*if (r instanceof InteractionResult.Success s) return s.swingSource() == InteractionResult.SwingSource.SERVER ? "success_server" : s.swingSource() == InteractionResult.SwingSource.NONE ? "consume" : "success";
+        /*if (r instanceof InteractionResult.Success s) return s.swingSource() == InteractionResult.SwingSource.NONE ? "consume" : s.swingSource().name().startsWith("SERVER") ? "success_server" : "success";
         return r.getClass().getSimpleName().toLowerCase(Locale.ROOT);
         *///?} else
         return r.name().toLowerCase(Locale.ROOT);
+    }
+
+    /** Time of day in ticks, counting days (26.1 replaced level day time with world clocks). */
+    public static long dayTime(net.minecraft.world.level.Level l) {
+        //? if >=26.1 {
+        /*return l.getOverworldClockTime();
+        *///?} else
+        return l.getDayTime();
     }
 
     public static boolean isDay(net.minecraft.world.level.Level l) {
@@ -248,6 +313,46 @@ public final class Mc {
 
     // ------------------------------------------------------------------ client
 
+    /** The open screen, or null in game (moved from Minecraft to Gui in 26.2). */
+    @Nullable
+    public static net.minecraft.client.gui.screens.Screen screen(Minecraft mc) {
+        //? if >=26.2 {
+        /*return mc.gui.screen();
+        *///?} else
+        return mc.screen;
+    }
+
+    public static void setScreen(Minecraft mc, @Nullable net.minecraft.client.gui.screens.Screen s) {
+        //? if >=26.2 {
+        /*mc.gui.setScreen(s);
+        *///?} else
+        mc.setScreen(s);
+    }
+
+    public static net.minecraft.client.Camera camera(Minecraft mc) {
+        //? if >=26.2 {
+        /*return mc.gameRenderer.mainCamera();
+        *///?} else
+        return mc.gameRenderer.getMainCamera();
+    }
+
+    /** A chat line (or action-bar text) shown only to this player. */
+    public static void message(net.minecraft.world.entity.player.Player p, Component c, boolean actionBar) {
+        //? if >=26.1 {
+        /*if (actionBar) p.sendOverlayMessage(c);
+        else p.sendSystemMessage(c);
+        *///?} else
+        p.displayClientMessage(c, actionBar);
+    }
+
+    /** Clicks a container slot; type is a click type name like "pickup" or "quick_move". */
+    public static void containerClick(Minecraft mc, net.minecraft.world.entity.player.Player p, int containerId, int slot, int button, String type) {
+        //? if >=26.1 {
+        /*mc.gameMode.handleContainerInput(containerId, slot, button, net.minecraft.world.inventory.ContainerInput.valueOf(type.toUpperCase(Locale.ROOT)), p);
+        *///?} else
+        mc.gameMode.handleInventoryMouseClick(containerId, slot, button, net.minecraft.world.inventory.ClickType.valueOf(type.toUpperCase(Locale.ROOT)), p);
+    }
+
     public static net.minecraft.network.chat.HoverEvent showText(Component text) {
         //? if >=1.21.5 {
         /*return new net.minecraft.network.chat.HoverEvent.ShowText(text);
@@ -264,14 +369,19 @@ public final class Mc {
 
     /** Captures the main framebuffer. Since 1.21.5 the image arrives later (GPU readback), possibly after a frame. */
     public static void screenshot(Minecraft mc, java.util.function.Consumer<NativeImage> done) {
-        //? if >=1.21.5 {
+        //? if >=26.2 {
+        /*net.minecraft.client.Screenshot.takeScreenshot(mc.gameRenderer.mainRenderTarget(), done);
+        *///?} elif >=1.21.5 {
         /*net.minecraft.client.Screenshot.takeScreenshot(mc.getMainRenderTarget(), done);
         *///?} else
         done.accept(net.minecraft.client.Screenshot.takeScreenshot(mc.getMainRenderTarget()));
     }
 
     public static void toast(Minecraft mc, Component title, Component text) {
-        //? if >=1.21.2 {
+        //? if >=26.2 {
+        /*net.minecraft.client.gui.components.toasts.SystemToast.addOrUpdate(mc.gui.toastManager(),
+                net.minecraft.client.gui.components.toasts.SystemToast.SystemToastId.PERIODIC_NOTIFICATION, title, text);
+        *///?} elif >=1.21.2 {
         /*net.minecraft.client.gui.components.toasts.SystemToast.addOrUpdate(mc.getToastManager(),
                 net.minecraft.client.gui.components.toasts.SystemToast.SystemToastId.PERIODIC_NOTIFICATION, title, text);
         *///?} else

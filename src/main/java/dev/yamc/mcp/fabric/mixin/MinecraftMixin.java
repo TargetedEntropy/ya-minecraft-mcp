@@ -13,10 +13,16 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 // Screen open/close events for Fabric (NeoForge has ScreenEvent.Opening/Closing): compares the
-// current screen before and after Minecraft.setScreen.
+// current screen before and after setScreen (on Minecraft; on Gui since 26.2).
+//? if >=26.2 {
+/^@Mixin(net.minecraft.client.gui.Gui.class)
+abstract class MinecraftMixin {
+    @Shadow @Nullable private Screen screen;
+^///?} else {
 @Mixin(Minecraft.class)
 abstract class MinecraftMixin {
     @Shadow @Nullable public Screen screen;
+//?}
 
     @Unique private Screen yamcmcp$before;
 

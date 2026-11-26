@@ -71,6 +71,7 @@ tasks {
             "minecraft" to sc.properties["mod.mc_compat"],
             "loader" to sc.properties["deps.fabric_loader"],
             "java" to "JAVA_$javaVersion",
+            "javamin" to javaVersion.toString(),
         )
         inputs.properties(props)
         filesMatching(listOf("fabric.mod.json", "*.mixins.json")) { expand(props) }

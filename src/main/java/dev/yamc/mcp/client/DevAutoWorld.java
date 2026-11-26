@@ -1,5 +1,6 @@
 package dev.yamc.mcp.client;
 
+import dev.yamc.mcp.util.Mc;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.world.Difficulty;
@@ -29,13 +30,17 @@ final class DevAutoWorld {
         Minecraft mc = Minecraft.getInstance();
         mc.execute(() -> {
             if (mc.getLevelSource().levelExists(name)) {
-                mc.createWorldOpenFlows().openWorld(name, () -> mc.setScreen(new TitleScreen()));
+                mc.createWorldOpenFlows().openWorld(name, () -> Mc.setScreen(mc, new TitleScreen()));
             } else {
+                //? if >=26.1 {
+                /*LevelSettings settings = new LevelSettings(name, GameType.SURVIVAL, new LevelSettings.DifficultySettings(Difficulty.NORMAL, false, false), true, WorldDataConfiguration.DEFAULT);
+                *///?} else {
                 LevelSettings settings = new LevelSettings(name, GameType.SURVIVAL, false, Difficulty.NORMAL, true,
                         //? if >=1.21.2 {
                         /*new GameRules(WorldDataConfiguration.DEFAULT.enabledFeatures()), WorldDataConfiguration.DEFAULT);
                         *///?} else
                         new GameRules(), WorldDataConfiguration.DEFAULT);
+                //?}
                 mc.createWorldOpenFlows().createFreshLevel(name, settings, new WorldOptions(Long.getLong("yamcmcp.devSeed", 12345L), true, false),
                         WorldPresets::createNormalWorldDimensions, new TitleScreen());
             }

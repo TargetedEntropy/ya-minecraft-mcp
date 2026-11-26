@@ -61,6 +61,9 @@ final class NeoForgePlatform implements Platform {
     @Override
     public Map<ResourceKey<?>, Codec<?>> dataPackCodecs() {
         Map<ResourceKey<?>, Codec<?>> m = new HashMap<>();
+        //? if >=26.3 {
+        /*DataPackRegistriesHooks.getWorldRegistriesWithDimensions().forEach(d -> m.put(d.key(), d.elementCodec()));
+        *///?} else
         DataPackRegistriesHooks.getDataPackRegistriesWithDimensions().forEach(d -> m.put(d.key(), d.elementCodec()));
         return m;
     }

@@ -64,6 +64,15 @@ public final class Recipes {
         }
     }
 
+    /** The codec of a recipe value (Recipe.CODEC encodes a holder reference since 26.3). */
+    @SuppressWarnings("unchecked")
+    public static com.mojang.serialization.Codec<Recipe<?>> codec() {
+        //? if >=26.3 {
+        /*return Recipe.DIRECT_CODEC;
+        *///?} else
+        return Recipe.CODEC;
+    }
+
     static RecipeView view(RecipeHolder<?> h, HolderLookup.Provider regs, @Nullable Level level) {
         Recipe<?> r = h.value();
         String type = String.valueOf(BuiltInRegistries.RECIPE_TYPE.getKey(r.getType()));

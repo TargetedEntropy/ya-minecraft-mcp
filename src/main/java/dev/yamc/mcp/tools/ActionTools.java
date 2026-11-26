@@ -30,7 +30,6 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
@@ -142,11 +141,10 @@ final class ActionTools {
                 .handler(a -> {
                     Minecraft mc = Ctx.mc();
                     LocalPlayer p = Ctx.player();
-                    ClickType type = ClickType.valueOf(a.str("click_type", "pickup").toUpperCase(Locale.ROOT));
                     var menu = p.containerMenu;
                     int slot = a.reqInt("slot");
                     if (slot != -999 && (slot < 0 || slot >= menu.slots.size())) throw new ToolException("Slot out of range 0-" + (menu.slots.size() - 1));
-                    mc.gameMode.handleInventoryMouseClick(menu.containerId, slot, a.integer("button", 0), type, p);
+                    Mc.containerClick(mc, p, menu.containerId, slot, a.integer("button", 0), a.str("click_type", "pickup"));
                     JsonObject o = new JsonObject();
                     o.addProperty("container_id", menu.containerId);
                     if (slot >= 0) o.add("slot_now", Stacks.json(menu.getSlot(slot).getItem(), false, p.registryAccess()));
@@ -158,7 +156,7 @@ final class ActionTools {
                 .desc("Open the player's inventory screen.")
                 .handler(a -> {
                     LocalPlayer p = Ctx.player();
-                    Ctx.mc().setScreen(new InventoryScreen(p));
+                    Mc.setScreen(Ctx.mc(), new InventoryScreen(p));
                     return ToolResult.ok("inventory opened");
                 }));
 
@@ -166,10 +164,11 @@ final class ActionTools {
                 .desc("Close the currently open GUI/container (like pressing Escape).")
                 .handler(a -> {
                     Minecraft mc = Ctx.mc();
-                    if (mc.screen == null) return ToolResult.ok("no screen open");
-                    String name = mc.screen.getClass().getSimpleName();
-                    if (mc.screen instanceof AbstractContainerScreen<?> && mc.player != null) mc.player.closeContainer();
-                    else mc.setScreen(null);
+                    var screen = Mc.screen(mc);
+                    if (screen == null) return ToolResult.ok("no screen open");
+                    String name = screen.getClass().getSimpleName();
+                    if (screen instanceof AbstractContainerScreen<?> && mc.player != null) mc.player.closeContainer();
+                    else Mc.setScreen(mc, null);
                     return ToolResult.ok("closed " + name);
                 }));
 
@@ -211,16 +210,20 @@ final class ActionTools {
                     String msg = a.reqStr("message");
                     String mode = a.str("mode", "chat");
                     switch (mode) {
-                        case "actionbar" -> Ctx.player().displayClientMessage(Component.literal(msg), true);
+                        case "actionbar" -> Mc.message(Ctx.player(), Component.literal(msg), true);
                         case "title" -> {
-                            mc.gui.setTimes(10, 70, 20);
+                            //? if >=26.2 {
+                            /*net.minecraft.client.gui.Hud hud = mc.gui.hud;
+                            *///?} else
+                            net.minecraft.client.gui.Gui hud = mc.gui;
+                            hud.setTimes(10, 70, 20);
                             if (a.has("title")) {
-                                mc.gui.setTitle(Component.literal(a.str("title", "")));
-                                mc.gui.setSubtitle(Component.literal(msg));
-                            } else mc.gui.setTitle(Component.literal(msg));
+                                hud.setTitle(Component.literal(a.str("title", "")));
+                                hud.setSubtitle(Component.literal(msg));
+                            } else hud.setTitle(Component.literal(msg));
                         }
                         case "toast" -> Mc.toast(mc, Component.literal(a.str("title", "Claude")), Component.literal(msg));
-                        default -> Ctx.player().displayClientMessage(Component.literal("[Claude] ").withStyle(ChatFormatting.LIGHT_PURPLE)
+                        default -> Mc.message(Ctx.player(), Component.literal("[Claude] ").withStyle(ChatFormatting.LIGHT_PURPLE)
                                 .append(Component.literal(msg).withStyle(ChatFormatting.WHITE)), false);
                     }
                     return ToolResult.ok("shown");
@@ -275,7 +278,7 @@ final class ActionTools {
         switch (action) {
             case "use_item" -> {
                 InteractionResult res = mc.gameMode.useItem(p, hand);
-                if (Mc.swings(res)) p.swing(hand);
+                if (Mc.swings(res)) Mc.swing(p, hand);
                 o.addProperty("result", Mc.name(res));
             }
             case "use_on_block" -> {
@@ -290,7 +293,7 @@ final class ActionTools {
                     hit = bh;
                 } else throw new ToolException("No block given and the crosshair is not on a block.");
                 InteractionResult res = mc.gameMode.useItemOn(p, hand, hit);
-                if (Mc.swings(res)) p.swing(hand);
+                if (Mc.swings(res)) Mc.swing(p, hand);
                 o.addProperty("result", Mc.name(res));
                 o.add("pos", Json.pos(hit.getBlockPos()));
                 o.addProperty("face", hit.getDirection().getName());
@@ -302,26 +305,26 @@ final class ActionTools {
                 else throw new ToolException("No entity_id given and the crosshair is not on an entity.");
                 if (action.equals("attack")) {
                     mc.gameMode.attack(p, target);
-                    p.swing(InteractionHand.MAIN_HAND);
+                    Mc.swing(p, InteractionHand.MAIN_HAND);
                 } else {
-                    InteractionResult res = mc.gameMode.interact(p, target, hand);
-                    if (Mc.swings(res)) p.swing(hand);
+                    InteractionResult res = Mc.interact(mc, p, target, hand);
+                    if (Mc.swings(res)) Mc.swing(p, hand);
                     o.addProperty("result", Mc.name(res));
                 }
                 o.addProperty("target", target.getName().getString());
                 o.addProperty("distance", Json.round(target.distanceTo(p)));
             }
             case "drop" -> {
-                if (p.drop(false)) p.swing(InteractionHand.MAIN_HAND);
+                if (Mc.dropSelected(mc, p, false)) Mc.swing(p, InteractionHand.MAIN_HAND);
             }
             case "drop_stack" -> {
-                if (p.drop(true)) p.swing(InteractionHand.MAIN_HAND);
+                if (Mc.dropSelected(mc, p, true)) Mc.swing(p, InteractionHand.MAIN_HAND);
             }
             case "swap_hands" -> KeyMapping.click(InputConstants.getKey(mc.options.keySwapOffhand.saveString()));
             case "respawn" -> {
                 if (!p.isDeadOrDying()) throw new ToolException("Player is not dead.");
                 p.respawn();
-                mc.setScreen(null);
+                Mc.setScreen(mc, null);
             }
             default -> throw new ToolException("Unknown action " + action);
         }
@@ -357,7 +360,7 @@ final class ActionTools {
                     if (System.currentTimeMillis() > deadline) return mineResult(false, "timeout (wrong tool or unbreakable?)", blockId, ticks);
                     pl.lookAt(EntityAnchorArgument.Anchor.EYES, Vec3.atCenterOf(pos));
                     mc.gameMode.continueDestroyBlock(pos, face);
-                    pl.swing(InteractionHand.MAIN_HAND);
+                    Mc.swing(pl, InteractionHand.MAIN_HAND);
                     return null;
                 }
 

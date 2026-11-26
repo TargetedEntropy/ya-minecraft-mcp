@@ -1,5 +1,6 @@
 package dev.yamc.mcp.json;
 
+import dev.yamc.mcp.recipe.Recipes;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import dev.yamc.mcp.recipe.Ing;
@@ -80,7 +81,7 @@ public final class RecipeJson {
             o.addProperty("cooking_time_ticks", r.cooking().ticks());
             o.addProperty("experience", r.cooking().experience());
         }
-        if (raw) o.add("raw", Json.encode(Recipe.CODEC, r.recipe(), regs));
+        if (raw) o.add("raw", Json.encode(Recipes.codec(), r.recipe(), regs));
         return o;
     }
 }

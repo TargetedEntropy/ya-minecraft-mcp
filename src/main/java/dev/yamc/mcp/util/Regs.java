@@ -137,6 +137,9 @@ public final class Regs {
         Map<ResourceKey<?>, Codec<?>> m = codecs;
         if (m == null) {
             m = new HashMap<>(YamcMcp.platform().dataPackCodecs());
+            //? if >=26.3 {
+            /*for (var d : net.minecraft.resources.RegistryDataLoader.RELOADABLE_REGISTRIES) m.put(d.key(), d.elementCodec());
+            *///?} else
             for (var lt : LootDataType.values().toList()) m.put(lt.registryKey(), lt.codec());
             codecs = m;
         }

@@ -14,8 +14,12 @@ public final class Ticker {
         /** Returns the result when finished, or null to run again next tick. */
         R step() throws Exception;
 
-        /** Runs exactly once when the job ends: finished, failed, or cancelled. */
-        default void end() {}
+        /**
+         * Runs exactly once when the job ends.
+         *
+         * @param completed true if {@link #step} returned a result; false if it threw or the waiting caller cancelled.
+         */
+        default void end(boolean completed) {}
     }
 
     private record Running<R>(Job<R> job, CompletableFuture<R> done) {
@@ -30,6 +34,10 @@ public final class Ticker {
                 done.completeExceptionally(t);
             }
             return true;
+        }
+
+        boolean completed() {
+            return done.isDone() && !done.isCompletedExceptionally();
         }
     }
 
@@ -62,7 +70,7 @@ public final class Ticker {
         for (Running<?> r : new ArrayList<>(RUNNING)) {
             if (!r.tick()) continue;
             RUNNING.remove(r);
-            r.job().end();
+            r.job().end(r.completed());
         }
     }
 }

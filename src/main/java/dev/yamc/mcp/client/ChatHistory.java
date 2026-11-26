@@ -8,7 +8,7 @@ import java.util.List;
 
 /** Last N chat/system messages (action bar excluded). */
 public final class ChatHistory {
-    public record Line(long time, String type, JsonObject data) {}
+    public record Line(long time, GameEvent type, JsonObject data) {}
 
     private static final ArrayDeque<Line> LINES = new ArrayDeque<>();
     private static final int MAX = 500;
@@ -17,7 +17,7 @@ public final class ChatHistory {
 
     public static synchronized void add(GameEvent type, JsonObject data) {
         if (type == GameEvent.ACTIONBAR) return;
-        LINES.addLast(new Line(System.currentTimeMillis(), type.id, data));
+        LINES.addLast(new Line(System.currentTimeMillis(), type, data));
         while (LINES.size() > MAX) LINES.removeFirst();
     }
 

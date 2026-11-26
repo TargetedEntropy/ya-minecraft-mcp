@@ -16,6 +16,7 @@ import dev.yamc.mcp.mcp.ToolResult;
 import dev.yamc.mcp.util.ClientThread;
 import dev.yamc.mcp.util.IdFilter;
 import dev.yamc.mcp.util.Json;
+import dev.yamc.mcp.util.Source;
 import dev.yamc.mcp.util.Regs;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
@@ -82,7 +83,7 @@ final class ExportTools {
         }
         if (all || what.contains("recipes")) {
             try {
-                Regs.Recipes src = ClientThread.call(() -> Regs.recipes(Regs.Source.AUTO));
+                RecipeSource src = ClientThread.call(() -> RecipeSource.of(Source.AUTO));
                 JsonArray arr = new JsonArray();
                 src.manager().getRecipes().stream().sorted(Comparator.comparing(RecipeHolder::id))
                         .forEach(h -> arr.add(RecipeJson.recipe(h, src.regs(), true)));

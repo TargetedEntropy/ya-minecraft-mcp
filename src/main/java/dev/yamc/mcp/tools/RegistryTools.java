@@ -13,6 +13,7 @@ import dev.yamc.mcp.mcp.ToolResult;
 import dev.yamc.mcp.util.IdFilter;
 import dev.yamc.mcp.util.Names;
 import dev.yamc.mcp.util.Paging;
+import dev.yamc.mcp.util.Source;
 import dev.yamc.mcp.util.Regs;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderSet;
@@ -38,7 +39,7 @@ final class RegistryTools {
                 .schema(Schema.of().idFilters().paging(200))
                 .handler(a -> {
                     IdFilter f = IdFilter.from(a);
-                    List<Map.Entry<ResourceLocation, Regs.Resolved>> list = Regs.all().entrySet().stream()
+                    List<Map.Entry<ResourceLocation, Regs.Resolved<?>>> list = Regs.all().entrySet().stream()
                             .filter(e -> f.test(e.getKey(), null)).toList();
                     return ToolResult.json(Paging.page(list, a, e -> {
                         JsonObject o = new JsonObject();
@@ -60,7 +61,7 @@ final class RegistryTools {
                         .bool("include_tags", "Include the tags of each entry (default false).")
                         .source(SOURCE_DESC)
                         .paging(100))
-                .handler(a -> ToolResult.json(entries(a))));
+                .handler(a -> ToolResult.json(withRegistry(a, RegistryTools::entries))));
 
         r.add(Tool.builder("registry_entry").title("Registry entry details")
                 .desc("Full details of one registry entry. Data-driven entries (biomes, damage types, enchantments, structures, worldgen features, loot tables, modded datapack registries, ...) are encoded to JSON with their own codec. Static entries get a type-specific summary (blocks: hardness, states, loot table; items: default components; entities: size, category; effects; attributes; ...). Always includes tags.")
@@ -68,7 +69,7 @@ final class RegistryTools {
                         .reqStr("id", "Entry id, e.g. minecraft:oak_log.")
                         .bool("include_data", "Include the codec-encoded data for data-driven entries (default true).")
                         .source(SOURCE_DESC))
-                .handler(a -> ToolResult.json(entry(a))));
+                .handler(a -> ToolResult.json(withRegistry(a, RegistryTools::entry))));
 
         r.add(Tool.builder("tags_list").title("List tags")
                 .desc("List tags of a registry (with member counts), filtered by namespace/query/regex on the tag id. Common convention tags live in the 'c' namespace (e.g. #c:ingots).")
@@ -76,7 +77,7 @@ final class RegistryTools {
                         .idFilters()
                         .source(SOURCE_DESC)
                         .paging(100))
-                .handler(a -> ToolResult.json(tagsList(a))));
+                .handler(a -> ToolResult.json(withRegistry(a, RegistryTools::tagsList))));
 
         r.add(Tool.builder("tag_members").title("Tag members")
                 .desc("Resolve a tag to its member entries (nested tags are already flattened).")
@@ -85,28 +86,29 @@ final class RegistryTools {
                         .bool("include_names", "Include localized names (default true).")
                         .source(SOURCE_DESC)
                         .paging(200))
-                .handler(a -> ToolResult.json(tagMembers(a))));
+                .handler(a -> ToolResult.json(withRegistry(a, RegistryTools::tagMembers))));
 
         r.add(Tool.builder("tags_of").title("Tags of an entry")
                 .desc("Reverse lookup: every tag that contains the given entry.")
                 .schema(Schema.of().reqStr("registry", "Registry id.").reqStr("id", "Entry id.")
                         .source(SOURCE_DESC))
-                .handler(a -> {
-                    Regs.Resolved res = resolve(a);
-                    JsonObject o = new JsonObject();
-                    o.addProperty("registry", res.registry().key().location().toString());
-                    o.addProperty("id", a.reqId("id").toString());
-                    o.add("tags", RegistryJson.tags(holder(res.registry(), a.reqId("id"))));
-                    return ToolResult.json(o);
-                }));
+                .handler(a -> ToolResult.json(withRegistry(a, RegistryTools::tagsOf))));
     }
 
     // ------------------------------------------------------------------ helpers
-    // Each tool resolves a Registry<?> and hands it to a <T> method, so the element type is captured once
-    // and everything below is checked by the compiler.
 
-    private static Regs.Resolved resolve(Args a) {
-        return Regs.resolve(a.reqId("registry"), Regs.Source.from(a));
+    /** A tool body over one resolved registry. Generic, so each body sees a single element type T. */
+    private interface Body {
+        <T> JsonObject apply(Args a, Regs.Resolved<T> res);
+    }
+
+    /** Resolves the "registry"/"source" arguments, runs the body, and tags the result with the registry and source. */
+    private static JsonObject withRegistry(Args a, Body body) {
+        Regs.Resolved<?> res = Regs.resolve(a.reqId("registry"), Source.from(a));
+        JsonObject o = body.apply(a, res);
+        o.addProperty("registry", res.registry().key().location().toString());
+        o.addProperty("source", res.source());
+        return o;
     }
 
     static <T> Holder.Reference<T> holder(Registry<T> reg, ResourceLocation id) {
@@ -120,15 +122,8 @@ final class RegistryTools {
         return set.stream().flatMap(h -> h.unwrapKey().stream()).map(ResourceKey::location).collect(Collectors.toSet());
     }
 
-    static JsonObject entries(Args a) {
-        Regs.Resolved res = resolve(a);
-        JsonObject o = entries(a, res.registry(), res);
-        o.addProperty("registry", res.registry().key().location().toString());
-        o.addProperty("source", res.source());
-        return o;
-    }
-
-    private static <T> JsonObject entries(Args a, Registry<T> reg, Regs.Resolved res) {
+    private static <T> JsonObject entries(Args a, Regs.Resolved<T> res) {
+        Registry<T> reg = res.registry();
         IdFilter f = IdFilter.from(a);
         boolean names = a.bool("include_names", true), tags = a.bool("include_tags", false);
         Set<ResourceLocation> tagSet = a.has("tag") ? tagMemberIds(reg, a.reqId("tag")) : null;
@@ -141,34 +136,25 @@ final class RegistryTools {
                 : new JsonPrimitive(h.key().location().toString()), 100);
     }
 
-    static JsonObject entry(Args a) {
-        Regs.Resolved res = resolve(a);
-        return entry(a, res.registry(), res);
-    }
-
-    private static <T> JsonObject entry(Args a, Registry<T> reg, Regs.Resolved res) {
-        Holder.Reference<T> h = holder(reg, a.reqId("id"));
-        JsonObject o = new JsonObject();
-        o.addProperty("registry", reg.key().location().toString());
-        o.addProperty("source", res.source());
+    private static <T> JsonObject entry(Args a, Regs.Resolved<T> res) {
+        Holder.Reference<T> h = holder(res.registry(), a.reqId("id"));
+        JsonObject o = RegistryJson.entry(res.registry(), h, res.access(), true, true, a.bool("include_data", true));
         o.addProperty("class", h.value().getClass().getName());
-        RegistryJson.entry(reg, h, res.access(), true, true, a.bool("include_data", true)).entrySet().forEach(e -> o.add(e.getKey(), e.getValue()));
         JsonObject details = RegistryJson.details(h.value(), res.access());
         if (details != null) o.add("details", details);
         return o;
     }
 
-    static JsonObject tagsList(Args a) {
-        Regs.Resolved res = resolve(a);
-        JsonObject o = tagsList(a, res.registry());
-        o.addProperty("registry", res.registry().key().location().toString());
-        o.addProperty("source", res.source());
+    private static <T> JsonObject tagsOf(Args a, Regs.Resolved<T> res) {
+        JsonObject o = new JsonObject();
+        o.addProperty("id", a.reqId("id").toString());
+        o.add("tags", RegistryJson.tags(holder(res.registry(), a.reqId("id"))));
         return o;
     }
 
-    private static <T> JsonObject tagsList(Args a, Registry<T> reg) {
+    private static <T> JsonObject tagsList(Args a, Regs.Resolved<T> res) {
         IdFilter f = IdFilter.from(a);
-        List<HolderSet.Named<T>> tags = reg.getTags().map(Pair::getSecond).filter(s -> f.test(s.key().location(), null))
+        List<HolderSet.Named<T>> tags = res.registry().getTags().map(Pair::getSecond).filter(s -> f.test(s.key().location(), null))
                 .sorted(Comparator.comparing(s -> s.key().location())).toList();
         return Paging.page(tags, a, s -> {
             JsonObject e = new JsonObject();
@@ -178,20 +164,12 @@ final class RegistryTools {
         }, 100);
     }
 
-    static JsonObject tagMembers(Args a) {
-        Regs.Resolved res = resolve(a);
+    private static <T> JsonObject tagMembers(Args a, Regs.Resolved<T> res) {
+        Registry<T> reg = res.registry();
         ResourceLocation tagId = a.reqId("tag");
-        JsonObject o = tagMembers(a, res.registry(), tagId);
-        o.addProperty("registry", res.registry().key().location().toString());
-        o.addProperty("tag", "#" + tagId);
-        o.addProperty("source", res.source());
-        return o;
-    }
-
-    private static <T> JsonObject tagMembers(Args a, Registry<T> reg, ResourceLocation tagId) {
         boolean names = a.bool("include_names", true);
         List<ResourceLocation> ids = tagMemberIds(reg, tagId).stream().sorted().toList();
-        return Paging.page(ids, a, id -> {
+        JsonObject o = Paging.page(ids, a, id -> {
             if (!names) return new JsonPrimitive(id.toString());
             JsonObject e = new JsonObject();
             e.addProperty("id", id.toString());
@@ -199,5 +177,7 @@ final class RegistryTools {
             if (n != null) e.addProperty("name", n);
             return e;
         }, 200);
+        o.addProperty("tag", "#" + tagId);
+        return o;
     }
 }

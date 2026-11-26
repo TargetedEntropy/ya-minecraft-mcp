@@ -45,7 +45,7 @@ final class RecipeTools {
                 .desc("All recipe types with recipe counts (vanilla and modded machines, e.g. create:mixing, mekanism:crushing).")
                 .schema(Schema.of().idFilters().source(SOURCE_DESC))
                 .handler(a -> {
-                    Regs.Recipes s = src(a);
+                    RecipeSource s = RecipeSource.from(a);
                     IdFilter f = IdFilter.from(a);
                     Map<ResourceLocation, Integer> counts = new TreeMap<>();
                     for (RecipeHolder<?> h : s.manager().getRecipes()) {
@@ -84,7 +84,7 @@ final class RecipeTools {
                         .bool("include_raw", "Include the raw codec JSON (default true).")
                         .source(SOURCE_DESC))
                 .handler(a -> {
-                    Regs.Recipes s = src(a);
+                    RecipeSource s = RecipeSource.from(a);
                     ResourceLocation id = a.reqId("id");
                     RecipeHolder<?> h = s.manager().byKey(id).orElseThrow(() -> new ToolException("No recipe '" + id + "'. Use recipes_search."));
                     JsonObject o = RecipeJson.recipe(h, s.regs(), a.bool("include_raw", true));
@@ -102,7 +102,7 @@ final class RecipeTools {
                         .strArray("exclude_namespaces", "Ignore recipes whose id is in these namespaces, e.g. [\"allthecompressed\"].")
                         .strArray("raw_materials", "Items or #tags to always treat as raw (never expanded), e.g. [\"#c:ingots\"].")
                         .source(SOURCE_DESC))
-                .handler(a -> ToolResult.json(CraftPlanner.plan(a, src(a)))));
+                .handler(a -> ToolResult.json(CraftPlanner.plan(a, RecipeSource.from(a)))));
 
         r.add(Tool.builder("craftable_now").title("Craftable now")
                 .desc("Recipes the player can craft right now from their inventory (ingredient counts only; reports whether a crafting table is needed).")
@@ -111,10 +111,6 @@ final class RecipeTools {
                         .source(SOURCE_DESC)
                         .paging(50))
                 .handler(a -> ToolResult.json(craftableNow(a))));
-    }
-
-    static Regs.Recipes src(Args a) {
-        return Regs.recipes(Regs.Source.from(a));
     }
 
     // ------------------------------------------------------------------ search
@@ -134,7 +130,7 @@ final class RecipeTools {
     }
 
     static JsonObject search(Args a) {
-        Regs.Recipes s = src(a);
+        RecipeSource s = RecipeSource.from(a);
         String type = a.has("type") ? Args.parseId(a.str("type", "")).toString() : null;
         Set<Item> out = a.has("output") ? items(a.reqStr("output")) : null;
         Predicate<Recipe<?>> input = a.has("input") ? consumesAny(items(a.reqStr("input"))) : null;
@@ -181,7 +177,7 @@ final class RecipeTools {
     }
 
     static JsonObject craftableNow(Args a) {
-        Regs.Recipes s = src(a);
+        RecipeSource s = RecipeSource.from(a);
         LocalPlayer p = Ctx.player();
         String type = Args.parseId(a.str("type", "minecraft:crafting")).toString();
         IdFilter f = IdFilter.from(a);

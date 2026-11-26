@@ -1,12 +1,10 @@
 package dev.yamc.mcp.util;
 
 import com.mojang.serialization.Codec;
-import dev.yamc.mcp.Config;
 import dev.yamc.mcp.mcp.Args;
 import dev.yamc.mcp.mcp.ToolException;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
-import net.minecraft.core.HolderLookup;
 import net.minecraft.core.HolderSet;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
@@ -15,7 +13,6 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.tags.TagKey;
-import net.minecraft.world.item.crafting.RecipeManager;
 import net.minecraft.world.level.storage.loot.LootDataType;
 import net.neoforged.neoforge.registries.DataPackRegistriesHooks;
 
@@ -35,39 +32,8 @@ import java.util.TreeMap;
 public final class Regs {
     private Regs() {}
 
-    public record Resolved(Registry<?> registry, String source, RegistryAccess access) {}
-
-    /** A recipe set plus the registries to encode it with. */
-    public record Recipes(RecipeManager manager, HolderLookup.Provider regs, String source) {}
-
-    /** AUTO: the integrated server when there is one (it keeps ingredient tags), else the recipes synced to this client. */
-    public static Recipes recipes(Source pref) {
-        MinecraftServer server = server();
-        if (pref == Source.SERVER || (pref == Source.AUTO && server != null)) {
-            MinecraftServer s = requireServer();
-            return new Recipes(s.getRecipeManager(), s.reloadableRegistries().get(), "integrated_server");
-        }
-        ClientPacketListener c = connection();
-        if (c == null) throw new ToolException("Not in a world: recipes are only available after joining a world/server.");
-        return new Recipes(c.getRecipeManager(), c.registryAccess(), "client");
-    }
-
-    /** The "source" tool argument: where to read registries and recipes from. */
-    public enum Source {
-        AUTO, CLIENT, SERVER;
-
-        public static final String[] NAMES = {"auto", "client", "server"};
-
-        public static Source from(Args a) {
-            String s = a.str("source", "auto");
-            return switch (s) {
-                case "auto" -> AUTO;
-                case "client" -> CLIENT;
-                case "server" -> SERVER;
-                default -> throw new ToolException("source must be auto, client or server (got '" + s + "').");
-            };
-        }
-    }
+    /** A registry, where it was read from, and the registry access to encode its entries with. */
+    public record Resolved<T>(Registry<T> registry, String source, RegistryAccess access) {}
 
     private static volatile Map<ResourceKey<?>, Codec<?>> codecs;
 
@@ -80,22 +46,6 @@ public final class Regs {
     public static RegistryAccess clientAccess() {
         ClientPacketListener c = connection();
         return c == null ? null : c.registryAccess();
-    }
-
-    @Nullable
-    public static MinecraftServer server() {
-        if (!Config.ENABLE_INTEGRATED_SERVER_TOOLS.get()) return null;
-        return Minecraft.getInstance().getSingleplayerServer();
-    }
-
-    /** The integrated server, or a ToolException explaining why server-only data is unavailable. */
-    public static MinecraftServer requireServer() {
-        MinecraftServer s = server();
-        if (s != null) return s;
-        if (!Config.ENABLE_INTEGRATED_SERVER_TOOLS.get())
-            throw new ToolException("Integrated-server data is disabled (config: tools.enableIntegratedServerTools=false).");
-        throw new ToolException("This needs the integrated server: it only works in singleplayer or when hosting a LAN world"
-                + " (server-only data like structures and loot tables is never sent to clients).");
     }
 
     /**
@@ -114,7 +64,7 @@ public final class Regs {
 
     @Nullable
     public static RegistryAccess serverAccess() {
-        MinecraftServer s = server();
+        MinecraftServer s = IntegratedServer.get();
         if (s == null) return null;
         try {
             return s.reloadableRegistries().get();
@@ -137,14 +87,14 @@ public final class Regs {
     }
 
     /** All known registries: id -> resolved (preferring client view for synced ones). */
-    public static Map<ResourceLocation, Resolved> all() {
-        Map<ResourceLocation, Resolved> out = new TreeMap<>();
+    public static Map<ResourceLocation, Resolved<?>> all() {
+        Map<ResourceLocation, Resolved<?>> out = new TreeMap<>();
         RegistryAccess server = serverAccess();
-        if (server != null) server.registries().forEach(e -> out.put(e.key().location(), new Resolved(e.value(), sourceFor(e.key(), false), server)));
+        if (server != null) server.registries().forEach(e -> out.put(e.key().location(), new Resolved<>(e.value(), sourceFor(e.key(), false), server)));
         RegistryAccess client = clientAccess();
-        if (client != null) client.registries().forEach(e -> out.put(e.key().location(), new Resolved(e.value(), sourceFor(e.key(), true), client)));
+        if (client != null) client.registries().forEach(e -> out.put(e.key().location(), new Resolved<>(e.value(), sourceFor(e.key(), true), client)));
         RegistryAccess stat = RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY);
-        for (Registry<?> r : BuiltInRegistries.REGISTRY) out.putIfAbsent(r.key().location(), new Resolved(r, "static", stat));
+        for (Registry<?> r : BuiltInRegistries.REGISTRY) out.putIfAbsent(r.key().location(), new Resolved<>(r, "static", stat));
         return out;
     }
 
@@ -154,32 +104,32 @@ public final class Regs {
     }
 
     /** AUTO: client view first, then integrated server, then static. CLIENT: never the server. SERVER: only the server. */
-    public static Resolved resolve(ResourceLocation id, Source pref) {
+    public static Resolved<?> resolve(ResourceLocation id, Source pref) {
         ResourceKey<Registry<Object>> key = ResourceKey.createRegistryKey(id);
         RegistryAccess client = clientAccess();
         if (pref == Source.SERVER) {
             RegistryAccess server = requireServerAccess();
-            return server.registry(key).map(r -> new Resolved(r, sourceFor(key, false), server))
+            return server.registry(key).map(r -> new Resolved<>(r, sourceFor(key, false), server))
                     .orElseThrow(() -> new ToolException("Registry '" + id + "' not found on the integrated server."));
         }
         RegistryAccess server = serverAccess();
         if (client != null) {
             var r = client.registry(key);
-            if (r.isPresent()) return new Resolved(r.get(), sourceFor(key, true), client);
+            if (r.isPresent()) return new Resolved<>(r.get(), sourceFor(key, true), client);
         }
         if (pref == Source.AUTO && server != null) {
             var r = server.registry(key);
-            if (r.isPresent()) return new Resolved(r.get(), sourceFor(key, false), server);
+            if (r.isPresent()) return new Resolved<>(r.get(), sourceFor(key, false), server);
         }
         Registry<?> stat = BuiltInRegistries.REGISTRY.get(id);
-        if (stat != null) return new Resolved(stat, "static", RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY));
+        if (stat != null) return new Resolved<>(stat, "static", RegistryAccess.fromRegistryOfRegistries(BuiltInRegistries.REGISTRY));
         String hint = client == null ? " Not in a world, so only static registries are available." :
                 (server == null ? " This may be a server-only registry (structures, worldgen, loot tables): those are only readable in singleplayer/LAN-host." : "");
         throw new ToolException("Unknown registry '" + id + "'." + hint + " Use registry_list to see available registries.");
     }
 
     private static RegistryAccess requireServerAccess() {
-        requireServer();
+        IntegratedServer.require();
         return serverAccess();
     }
 

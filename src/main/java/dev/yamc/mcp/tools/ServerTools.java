@@ -12,6 +12,7 @@ import dev.yamc.mcp.mcp.ToolRegistry;
 import dev.yamc.mcp.mcp.ToolResult;
 import dev.yamc.mcp.util.ClientThread;
 import dev.yamc.mcp.util.Json;
+import dev.yamc.mcp.util.IntegratedServer;
 import dev.yamc.mcp.util.Regs;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
@@ -70,7 +71,7 @@ final class ServerTools {
     }
 
     static JsonObject lootTable(Args a) {
-        MinecraftServer s = Regs.requireServer();
+        MinecraftServer s = IntegratedServer.require();
         ResourceLocation id = a.reqId("id");
         RegistryAccess access = s.reloadableRegistries().get();
         Registry<LootTable> reg = access.registryOrThrow(Registries.LOOT_TABLE);
@@ -111,7 +112,7 @@ final class ServerTools {
     }
 
     static JsonObject structureInfo(Args a) {
-        MinecraftServer s = Regs.requireServer();
+        MinecraftServer s = IntegratedServer.require();
         ResourceLocation id = a.reqId("id");
         RegistryAccess access = s.registryAccess();
         Registry<Structure> reg = access.registryOrThrow(Registries.STRUCTURE);
@@ -162,7 +163,7 @@ final class ServerTools {
      * {@code prepare} parses the arguments against the server registries, on the server thread.
      */
     private static ToolResult locate(Args a, String foundKey, java.util.function.Function<ServerLevel, Search> prepare) throws Exception {
-        MinecraftServer s = ClientThread.call(Regs::requireServer);
+        MinecraftServer s = ClientThread.call(IntegratedServer::require);
         record Origin(ResourceKey<Level> dim, BlockPos pos) {}
         Origin org = ClientThread.call(() -> {
             var p = Ctx.player();

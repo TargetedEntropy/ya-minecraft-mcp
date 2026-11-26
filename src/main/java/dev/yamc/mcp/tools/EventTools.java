@@ -40,7 +40,7 @@ final class EventTools {
                     for (ChatHistory.Line l : f.subList(Math.max(0, f.size() - limit), f.size())) {
                         JsonObject o = new JsonObject();
                         o.addProperty("time", l.time());
-                        o.addProperty("type", l.type());
+                        o.addProperty("type", l.type().id);
                         for (var e : l.data().entrySet()) o.add(e.getKey(), e.getValue());
                         arr.add(o);
                     }

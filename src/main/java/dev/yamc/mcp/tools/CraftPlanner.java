@@ -6,7 +6,6 @@ import dev.yamc.mcp.json.RecipeJson;
 import dev.yamc.mcp.mcp.Args;
 import dev.yamc.mcp.mcp.ToolException;
 import dev.yamc.mcp.util.Inventories;
-import dev.yamc.mcp.util.Regs;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -62,7 +61,7 @@ final class CraftPlanner {
         return true;
     }
 
-    static JsonObject plan(Args a, Regs.Recipes src) {
+    static JsonObject plan(Args a, RecipeSource src) {
         Item target = Ctx.item(a.reqStr("item"));
         int count = a.integer("count", 1, 1, 100000);
         List<String> types = a.strList("recipe_types");

@@ -1,7 +1,6 @@
 package dev.yamc.mcp.tools;
 
 import dev.yamc.mcp.json.RecipeJson;
-import dev.yamc.mcp.util.Regs;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.Ingredient;
@@ -41,13 +40,13 @@ final class RecipeGraph {
     private static Key cachedKey;
     private static RecipeGraph cached;
 
-    private final Regs.Recipes src;
+    private final RecipeSource src;
     /** Recipes per output item, vanilla first, then by id. */
     private final Map<Item, List<RecipeHolder<?>>> byOutput = new HashMap<>();
     /** item -> every item that is a (narrow) ingredient option of a recipe producing it */
     private final Map<Item, Set<Item>> inputsOf = new HashMap<>();
 
-    static synchronized RecipeGraph of(Regs.Recipes src, Set<String> types) {
+    static synchronized RecipeGraph of(RecipeSource src, Set<String> types) {
         Collection<RecipeHolder<?>> recipes = src.manager().getRecipes();
         Key key = new Key(recipes, recipes.size(), Set.copyOf(types), src.source());
         if (!key.equals(cachedKey)) {
@@ -57,7 +56,7 @@ final class RecipeGraph {
         return cached;
     }
 
-    private RecipeGraph(Regs.Recipes src, Collection<RecipeHolder<?>> recipes, Set<String> types) {
+    private RecipeGraph(RecipeSource src, Collection<RecipeHolder<?>> recipes, Set<String> types) {
         this.src = src;
         for (RecipeHolder<?> h : recipes) {
             Recipe<?> r = h.value();

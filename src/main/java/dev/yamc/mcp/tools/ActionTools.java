@@ -47,7 +47,7 @@ final class ActionTools {
                 .desc("Send a chat message as the player (visible to everyone on the server). Messages starting with '/' are run as commands. Returns 'seq' for wait_for_event.")
                 .schema(Schema.of().reqStr("message", "Text to send."))
                 .handler(a -> {
-                    var c = conn();
+                    var c = Ctx.connection();
                     String m = a.reqStr("message");
                     long seq = EventLog.latest();
                     if (m.startsWith("/")) c.sendCommand(m.substring(1));
@@ -59,7 +59,7 @@ final class ActionTools {
                 .desc("Run a command as the player (with or without leading '/'), e.g. 'time set day' in singleplayer with cheats. Client-side mod commands are handled too. Output arrives as system_message events: use wait_for_event with the returned seq.")
                 .schema(Schema.of().reqStr("command", "Command text."))
                 .handler(a -> {
-                    var c = conn();
+                    var c = Ctx.connection();
                     String cmd = a.reqStr("command");
                     if (cmd.startsWith("/")) cmd = cmd.substring(1);
                     long seq = EventLog.latest();
@@ -74,7 +74,7 @@ final class ActionTools {
                 .handler(a -> {
                     LocalPlayer p = Ctx.player();
                     if (a.has("entity_id")) {
-                        Entity e = entity(a.reqInt("entity_id"));
+                        Entity e = Ctx.entity(a.reqInt("entity_id"));
                         p.lookAt(EntityAnchorArgument.Anchor.EYES, e.getEyePosition());
                     } else if (a.has("x") && a.has("y") && a.has("z")) {
                         double x = a.dbl("x", 0), y = a.dbl("y", 0), z = a.dbl("z", 0);
@@ -227,24 +227,12 @@ final class ActionTools {
 
     // ------------------------------------------------------------------
 
-    static net.minecraft.client.multiplayer.ClientPacketListener conn() {
-        var c = Ctx.mc().getConnection();
-        if (c == null || Ctx.mc().player == null) throw new ToolException("Not in a world.");
-        return c;
-    }
-
     static ToolResult seqResult(String msg, long seq) {
         JsonObject o = new JsonObject();
         o.addProperty("ok", true);
         o.addProperty("message", msg);
         o.addProperty("seq", seq);
         return ToolResult.json(o);
-    }
-
-    static Entity entity(int id) {
-        Entity e = Ctx.level().getEntity(id);
-        if (e == null) throw new ToolException("No loaded entity with id " + id);
-        return e;
     }
 
     static int color(String s) {
@@ -307,7 +295,7 @@ final class ActionTools {
             }
             case "attack", "interact_entity" -> {
                 Entity target;
-                if (a.has("entity_id")) target = entity(a.reqInt("entity_id"));
+                if (a.has("entity_id")) target = Ctx.entity(a.reqInt("entity_id"));
                 else if (mc.hitResult instanceof EntityHitResult eh) target = eh.getEntity();
                 else throw new ToolException("No entity_id given and the crosshair is not on an entity.");
                 if (action.equals("attack")) {
@@ -339,17 +327,12 @@ final class ActionTools {
         return ToolResult.json(o);
     }
 
-    static void requireUnpaused() {
-        if (Ctx.mc().isPaused())
-            throw new ToolException("The game is paused (singleplayer pauses when the window loses focus or a menu is open). Close the menu, or press F3+P in game to disable pause-on-focus-loss.");
-    }
-
     static ToolResult mine(Args a) throws Exception {
         BlockPos pos = Ctx.reqPos(a);
         int timeout = a.integer("timeout_seconds", 15, 1, 120);
         return ToolResult.json(Ticker.run(() -> {
             LocalPlayer p = Ctx.player();
-            requireUnpaused();
+            Ctx.requireUnpaused();
             var state = Ctx.level().getBlockState(pos);
             if (state.isAir()) throw new ToolException("Block at " + pos.toShortString() + " is already air.");
             double dist = p.getEyePosition().distanceTo(Vec3.atCenterOf(pos));
@@ -377,7 +360,7 @@ final class ActionTools {
                 }
 
                 @Override
-                public void end() {
+                public void end(boolean completed) {
                     if (mc.gameMode != null) mc.gameMode.stopDestroyBlock();
                 }
             };
@@ -414,7 +397,7 @@ final class ActionTools {
         int ticks = a.integer("ticks", 20, 1, 600);
         Callable<Ticker.Job<JsonObject>> setup = () -> {
             LocalPlayer p = Ctx.player();
-            requireUnpaused();
+            Ctx.requireUnpaused();
             Minecraft mc = Ctx.mc();
             List<KeyMapping> maps = keys.stream().map(k -> key(mc, k)).toList();
             if (a.has("yaw")) {
@@ -443,7 +426,7 @@ final class ActionTools {
                 }
 
                 @Override
-                public void end() {
+                public void end(boolean completed) {
                     maps.forEach(m -> m.setDown(false));
                 }
             };

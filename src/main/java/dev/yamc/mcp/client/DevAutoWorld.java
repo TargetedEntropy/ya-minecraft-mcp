@@ -9,23 +9,21 @@ import net.minecraft.world.level.LevelSettings;
 import net.minecraft.world.level.WorldDataConfiguration;
 import net.minecraft.world.level.levelgen.WorldOptions;
 import net.minecraft.world.level.levelgen.presets.WorldPresets;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.neoforge.client.event.ScreenEvent;
+import net.minecraft.client.gui.screens.Screen;
 
 /**
  * Development/testing aid only: when the JVM is started with -Dyamcmcp.devAutoWorld=NAME, the first time the
  * title screen opens a singleplayer world NAME is opened (or created with a fixed seed). Inactive otherwise.
  */
-public final class DevAutoWorld {
+final class DevAutoWorld {
     private boolean done;
 
-    public static boolean enabled() {
+    static boolean enabled() {
         return System.getProperty("yamcmcp.devAutoWorld") != null;
     }
 
-    @SubscribeEvent
-    public void onScreen(ScreenEvent.Opening e) {
-        if (done || !(e.getNewScreen() instanceof TitleScreen)) return;
+    void screenOpening(Screen screen) {
+        if (done || !(screen instanceof TitleScreen)) return;
         done = true;
         String name = System.getProperty("yamcmcp.devAutoWorld");
         Minecraft mc = Minecraft.getInstance();

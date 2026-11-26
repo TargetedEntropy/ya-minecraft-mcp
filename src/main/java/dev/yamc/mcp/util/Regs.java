@@ -1,5 +1,6 @@
 package dev.yamc.mcp.util;
 
+import dev.yamc.mcp.YamcMcp;
 import com.mojang.serialization.Codec;
 import dev.yamc.mcp.mcp.Args;
 import dev.yamc.mcp.mcp.ToolException;
@@ -14,7 +15,6 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.level.storage.loot.LootDataType;
-import net.neoforged.neoforge.registries.DataPackRegistriesHooks;
 
 import javax.annotation.Nullable;
 import java.util.HashMap;
@@ -139,8 +139,7 @@ public final class Regs {
     public static <T> Codec<T> elementCodec(ResourceKey<? extends Registry<T>> key) {
         Map<ResourceKey<?>, Codec<?>> m = codecs;
         if (m == null) {
-            m = new HashMap<>();
-            for (var d : DataPackRegistriesHooks.getDataPackRegistriesWithDimensions().toList()) m.put(d.key(), d.elementCodec());
+            m = new HashMap<>(YamcMcp.platform().dataPackCodecs());
             for (var lt : LootDataType.values().toList()) m.put(lt.registryKey(), lt.codec());
             codecs = m;
         }

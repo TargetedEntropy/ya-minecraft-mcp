@@ -1,18 +1,18 @@
 package dev.yamc.mcp.json;
 
+import dev.yamc.mcp.platform.Platform;
+import dev.yamc.mcp.YamcMcp;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import dev.yamc.mcp.util.Json;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.AbstractCookingRecipe;
 import net.minecraft.world.item.crafting.Ingredient;
 import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.ShapedRecipe;
-import net.neoforged.neoforge.registries.NeoForgeRegistries;
 
 import java.util.Arrays;
 import java.util.HashSet;
@@ -42,16 +42,17 @@ public final class RecipeJson {
     /** Identity of an ingredient by its options, for grouping equal ingredients. */
     public static String signature(Ingredient ing) {
         StringBuilder b = new StringBuilder();
-        if (ing.isCustom()) b.append("custom:").append(ing.getCustomIngredient().hashCode()).append(';');
+        Platform.CustomIngredient custom = YamcMcp.platform().customIngredient(ing);
+        if (custom != null) b.append("custom:").append(custom.identity()).append(';');
         Arrays.stream(ing.getItems()).map(s -> BuiltInRegistries.ITEM.getKey(s.getItem()).toString()).sorted().forEach(x -> b.append(x).append(','));
         return b.toString();
     }
 
     public static JsonObject ingredient(Ingredient ing) {
         JsonObject o = new JsonObject();
-        if (ing.isCustom()) {
-            ResourceLocation t = NeoForgeRegistries.INGREDIENT_TYPES.getKey(ing.getCustomIngredient().getType());
-            o.addProperty("custom_type", String.valueOf(t));
+        Platform.CustomIngredient custom = YamcMcp.platform().customIngredient(ing);
+        if (custom != null) {
+            o.addProperty("custom_type", custom.type());
         } else {
             JsonArray tags = new JsonArray();
             for (Ingredient.Value v : ing.getValues()) if (v instanceof Ingredient.TagValue tv) tags.add("#" + tv.tag().location());

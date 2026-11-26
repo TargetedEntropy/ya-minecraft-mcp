@@ -10,11 +10,9 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.item.Item;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.neoforge.client.event.ClientChatReceivedEvent;
-import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
-import net.neoforged.neoforge.client.event.ClientTickEvent;
-import net.neoforged.neoforge.client.event.ScreenEvent;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
+import org.jetbrains.annotations.Nullable;
 
 import dev.yamc.mcp.util.Inventories;
 import dev.yamc.mcp.util.Json;
@@ -25,10 +23,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.Function;
 
-/** Watches the client every tick and records notable changes into the {@link EventLog}. */
-public final class GameWatcher {
+/** Watches the client every tick and records notable changes into the {@link EventLog}. Driven by {@link ClientEvents}. */
+final class GameWatcher {
     /**
      * Samples one value every {@code every} ticks and reports changes. The first sample after a
      * reset (and null samples) only establish the baseline.
@@ -90,8 +89,7 @@ public final class GameWatcher {
     private int tick;
     private final Map<Long, Long> recentChat = new HashMap<>();
 
-    @SubscribeEvent
-    public void onTick(ClientTickEvent.Post e) {
+    void tick() {
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer p = mc.player;
         Ticker.tick();
@@ -173,17 +171,16 @@ public final class GameWatcher {
         }
     }
 
-    @SubscribeEvent
-    public void onChat(ClientChatReceivedEvent e) {
-        String text = e.getMessage().getString();
+    void chat(Component message, @Nullable UUID sender, boolean system, boolean overlay) {
+        String text = message.getString();
         JsonObject d = new JsonObject();
         d.addProperty("text", text);
         GameEvent type = GameEvent.CHAT;
-        if (e instanceof ClientChatReceivedEvent.System sys) {
-            type = sys.isOverlay() ? GameEvent.ACTIONBAR : GameEvent.SYSTEM_MESSAGE;
-        } else if (e.getSender() != null && !Objects.equals(e.getSender(), net.minecraft.Util.NIL_UUID)) {
-            d.addProperty("sender_uuid", e.getSender().toString());
-            var info = Minecraft.getInstance().getConnection() == null ? null : Minecraft.getInstance().getConnection().getPlayerInfo(e.getSender());
+        if (system) {
+            type = overlay ? GameEvent.ACTIONBAR : GameEvent.SYSTEM_MESSAGE;
+        } else if (sender != null && !Objects.equals(sender, net.minecraft.Util.NIL_UUID)) {
+            d.addProperty("sender_uuid", sender.toString());
+            var info = Minecraft.getInstance().getConnection() == null ? null : Minecraft.getInstance().getConnection().getPlayerInfo(sender);
             if (info != null) d.addProperty("sender", info.getProfile().getName());
         }
         if (type == GameEvent.ACTIONBAR) {
@@ -197,23 +194,20 @@ public final class GameWatcher {
         EventLog.add(type, d);
     }
 
-    @SubscribeEvent
-    public void onScreenOpen(ScreenEvent.Opening e) {
+    void screenOpening(Screen screen) {
         JsonObject d = new JsonObject();
-        d.addProperty("screen", e.getNewScreen().getClass().getSimpleName());
-        d.addProperty("title", e.getNewScreen().getTitle().getString());
-        EventLog.add(e.getNewScreen() instanceof DeathScreen ? GameEvent.DEATH_SCREEN : GameEvent.SCREEN_OPEN, d);
+        d.addProperty("screen", screen.getClass().getSimpleName());
+        d.addProperty("title", screen.getTitle().getString());
+        EventLog.add(screen instanceof DeathScreen ? GameEvent.DEATH_SCREEN : GameEvent.SCREEN_OPEN, d);
     }
 
-    @SubscribeEvent
-    public void onScreenClose(ScreenEvent.Closing e) {
+    void screenClosing(Screen screen) {
         JsonObject d = new JsonObject();
-        d.addProperty("screen", e.getScreen().getClass().getSimpleName());
+        d.addProperty("screen", screen.getClass().getSimpleName());
         EventLog.add(GameEvent.SCREEN_CLOSE, d);
     }
 
-    @SubscribeEvent
-    public void onLogin(ClientPlayerNetworkEvent.LoggingIn e) {
+    void loggingIn() {
         JsonObject d = new JsonObject();
         Minecraft mc = Minecraft.getInstance();
         d.addProperty("singleplayer", mc.hasSingleplayerServer());
@@ -222,8 +216,7 @@ public final class GameWatcher {
         resetWatches();
     }
 
-    @SubscribeEvent
-    public void onLogout(ClientPlayerNetworkEvent.LoggingOut e) {
+    void loggingOut() {
         EventLog.add(GameEvent.LEAVE_WORLD, new JsonObject());
         Markers.clear();
     }

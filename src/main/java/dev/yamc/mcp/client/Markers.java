@@ -14,8 +14,7 @@ import net.minecraft.client.renderer.RenderStateShard;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -67,16 +66,14 @@ public final class Markers {
         return new ArrayList<>(MARKERS);
     }
 
-    @SubscribeEvent
-    public void onRender(RenderLevelStageEvent e) {
-        if (e.getStage() != RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES) return;
+    /** Draws the markers; called by {@link ClientEvents#renderLevel} after block entities. */
+    static void render(@Nullable PoseStack pose, Camera cam) {
         if (MARKERS.isEmpty()) return;
         long now = System.currentTimeMillis();
         MARKERS.removeIf(m -> m.expiresAt < now);
         Minecraft mc = Minecraft.getInstance();
-        Camera cam = e.getCamera();
         Vec3 c = cam.getPosition();
-        PoseStack ps = e.getPoseStack() != null ? e.getPoseStack() : new PoseStack();
+        PoseStack ps = pose != null ? pose : new PoseStack();
         MultiBufferSource.BufferSource buf = mc.renderBuffers().bufferSource();
         ps.pushPose();
         ps.translate(-c.x, -c.y, -c.z);

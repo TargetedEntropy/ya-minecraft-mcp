@@ -1,5 +1,6 @@
 package dev.yamc.mcp.tools;
 
+import dev.yamc.mcp.YamcMcp;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -22,7 +23,6 @@ import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.world.item.crafting.RecipeHolder;
-import net.neoforged.fml.loading.FMLPaths;
 
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
@@ -50,7 +50,7 @@ final class ExportTools {
         List<String> what = a.strList("what");
         boolean all = what.isEmpty(), registries = all || what.contains("registries"), tags = all || what.contains("tags");
         IdFilter f = IdFilter.from(a);
-        Path dir = FMLPaths.GAMEDIR.get().resolve("yamcmcp-export").resolve(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")));
+        Path dir = YamcMcp.platform().gameDir().resolve("yamcmcp-export").resolve(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")));
         Files.createDirectories(dir);
         JsonObject summary = new JsonObject();
         summary.addProperty("directory", dir.toAbsolutePath().toString());

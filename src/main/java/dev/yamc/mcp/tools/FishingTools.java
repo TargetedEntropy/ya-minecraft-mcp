@@ -1,5 +1,6 @@
 package dev.yamc.mcp.tools;
 
+import dev.yamc.mcp.YamcMcp;
 import com.google.gson.JsonObject;
 import dev.yamc.mcp.client.Ticker;
 import dev.yamc.mcp.json.Stacks;
@@ -15,9 +16,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.projectile.FishingHook;
-import net.minecraft.world.item.FishingRodItem;
 import net.minecraft.world.item.ItemStack;
-import net.neoforged.neoforge.common.ItemAbilities;
 
 import java.util.Locale;
 import java.util.UUID;
@@ -55,7 +54,7 @@ final class FishingTools {
     private static final long BATCH_LIMIT_MS = 8 * 60_000L;
 
     static boolean isRod(ItemStack s) {
-        return !s.isEmpty() && (s.getItem() instanceof FishingRodItem || s.canPerformAction(ItemAbilities.FISHING_ROD_CAST));
+        return !s.isEmpty() && YamcMcp.platform().isFishingRod(s);
     }
 
     /** The hand holding a rod (main hand preferred), or null. */

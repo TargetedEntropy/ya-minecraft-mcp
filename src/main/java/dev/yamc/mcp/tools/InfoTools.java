@@ -1,5 +1,7 @@
 package dev.yamc.mcp.tools;
 
+import dev.yamc.mcp.platform.Platform;
+import dev.yamc.mcp.YamcMcp;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.mojang.blaze3d.platform.NativeImage;
@@ -26,8 +28,6 @@ import net.minecraft.stats.Stat;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
-import net.neoforged.fml.ModList;
-import net.neoforged.neoforgespi.language.IModInfo;
 
 import java.util.ArrayList;
 import java.util.Base64;
@@ -46,15 +46,15 @@ final class InfoTools {
                 .handler(a -> {
                     String q = a.str("query", "").toLowerCase(Locale.ROOT);
                     boolean desc = a.bool("include_description", false);
-                    List<IModInfo> mods = new ArrayList<>(ModList.get().getMods());
-                    mods.removeIf(m -> !q.isEmpty() && !m.getModId().toLowerCase(Locale.ROOT).contains(q) && !m.getDisplayName().toLowerCase(Locale.ROOT).contains(q));
-                    mods.sort(Comparator.comparing(IModInfo::getModId));
+                    List<Platform.ModInfo> mods = new ArrayList<>(YamcMcp.platform().mods());
+                    mods.removeIf(m -> !q.isEmpty() && !m.id().toLowerCase(Locale.ROOT).contains(q) && !m.name().toLowerCase(Locale.ROOT).contains(q));
+                    mods.sort(Comparator.comparing(Platform.ModInfo::id));
                     return ToolResult.json(Paging.page(mods, a, m -> {
                         JsonObject o = new JsonObject();
-                        o.addProperty("id", m.getModId());
-                        o.addProperty("name", m.getDisplayName());
-                        o.addProperty("version", m.getVersion().toString());
-                        if (desc) o.addProperty("description", m.getDescription().trim());
+                        o.addProperty("id", m.id());
+                        o.addProperty("name", m.name());
+                        o.addProperty("version", m.version());
+                        if (desc) o.addProperty("description", m.description());
                         return o;
                     }, 200));
                 }));

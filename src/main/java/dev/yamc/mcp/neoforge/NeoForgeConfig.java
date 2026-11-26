@@ -1,20 +1,24 @@
-package dev.yamc.mcp;
+package dev.yamc.mcp.neoforge;
 
+import dev.yamc.mcp.platform.Settings;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
-public final class Config {
-    public static final ModConfigSpec SPEC;
+import java.util.List;
 
-    public static final ModConfigSpec.IntValue PORT;
-    public static final ModConfigSpec.ConfigValue<String> BIND_ADDRESS;
-    public static final ModConfigSpec.BooleanValue REQUIRE_TOKEN;
-    public static final ModConfigSpec.BooleanValue ENABLE_ACTIONS;
-    public static final ModConfigSpec.BooleanValue ENABLE_INTEGRATED_SERVER_TOOLS;
-    public static final ModConfigSpec.BooleanValue ENABLE_LOCATE;
-    public static final ModConfigSpec.IntValue CLIENT_THREAD_TIMEOUT_MS;
-    public static final ModConfigSpec.IntValue EVENT_BUFFER_SIZE;
-    public static final ModConfigSpec.BooleanValue PUSH_ENABLED;
-    public static final ModConfigSpec.ConfigValue<java.util.List<? extends String>> PUSH_EVENT_TYPES;
+/** The settings as a NeoForge client config (config/yamcmcp-client.toml). */
+final class NeoForgeConfig implements Settings {
+    static final ModConfigSpec SPEC;
+
+    static final ModConfigSpec.IntValue PORT;
+    static final ModConfigSpec.ConfigValue<String> BIND_ADDRESS;
+    static final ModConfigSpec.BooleanValue REQUIRE_TOKEN;
+    static final ModConfigSpec.BooleanValue ENABLE_ACTIONS;
+    static final ModConfigSpec.BooleanValue ENABLE_INTEGRATED_SERVER_TOOLS;
+    static final ModConfigSpec.BooleanValue ENABLE_LOCATE;
+    static final ModConfigSpec.IntValue CLIENT_THREAD_TIMEOUT_MS;
+    static final ModConfigSpec.IntValue EVENT_BUFFER_SIZE;
+    static final ModConfigSpec.BooleanValue PUSH_ENABLED;
+    static final ModConfigSpec.ConfigValue<java.util.List<? extends String>> PUSH_EVENT_TYPES;
 
     static {
         ModConfigSpec.Builder b = new ModConfigSpec.Builder();
@@ -48,5 +52,18 @@ public final class Config {
         SPEC = b.build();
     }
 
-    private Config() {}
+    static final NeoForgeConfig INSTANCE = new NeoForgeConfig();
+
+    private NeoForgeConfig() {}
+
+    @Override public int port() { return PORT.get(); }
+    @Override public String bindAddress() { return BIND_ADDRESS.get(); }
+    @Override public boolean requireToken() { return REQUIRE_TOKEN.get(); }
+    @Override public int clientThreadTimeoutMs() { return CLIENT_THREAD_TIMEOUT_MS.get(); }
+    @Override public boolean enableActions() { return ENABLE_ACTIONS.get(); }
+    @Override public boolean enableIntegratedServerTools() { return ENABLE_INTEGRATED_SERVER_TOOLS.get(); }
+    @Override public boolean enableLocate() { return ENABLE_LOCATE.get(); }
+    @Override public int eventBufferSize() { return EVENT_BUFFER_SIZE.get(); }
+    @Override public boolean pushEnabled() { return PUSH_ENABLED.get(); }
+    @Override public List<String> pushEventTypes() { return List.copyOf(PUSH_EVENT_TYPES.get()); }
 }

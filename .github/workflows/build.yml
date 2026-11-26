@@ -20,9 +20,10 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
+          # The last one is the default JVM, which runs Gradle (Stonecutter needs 25); 21 is a toolchain for 1.21.x.
           java-version: |
-            25
             21
+            25
       - uses: gradle/actions/setup-gradle@v4
       - name: Build
         run: ./gradlew ":${{ matrix.minecraft }}-fabric:buildAndCollect" ":${{ matrix.minecraft }}-neoforge:buildAndCollect" ":${{ matrix.minecraft }}-neoforge:test"

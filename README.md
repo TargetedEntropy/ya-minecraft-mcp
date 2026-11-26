@@ -107,7 +107,7 @@ NeoForge: `config/yamcmcp-client.toml`. Fabric: `config/yamcmcp.properties` (sam
 
 One source tree builds every version and loader with [Stonecutter](https://stonecutter.kikugie.dev). Each pair is a Gradle
 project named `<minecraft>-<loader>` (e.g. `1.21.11-fabric`); versions and dependencies are in `stonecutter.properties.toml`.
-Needs JDK 21 and JDK 25 (26.x).
+Gradle runs on JDK 25 (Stonecutter needs it); JDK 21 is also used as the toolchain for the 1.21.x jars.
 
 - `./gradlew buildAll`: every jar, collected in `build/libs/<mod version>/`. One node: `./gradlew :26.3-neoforge:build`.
 - `./gradlew :<node>:runClient`, or `:<node>:runTestClient` for a client in `run-test/<node>/` that auto-creates and joins a

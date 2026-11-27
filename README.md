@@ -124,7 +124,7 @@ Gradle runs on JDK 25 (Stonecutter needs it); JDK 21 is also used as the toolcha
 
 ## Publishing to CurseForge
 
-`scripts/publish-curseforge.sh [--type release|beta|alpha] [--changelog notes.md] [--only <node>]... [--no-build] [--dry-run]`
+`scripts/publish-curseforge.sh [--type release|beta|alpha (default release)] [--changelog notes.md] [--only <node>]... [--no-build] [--dry-run]`
 builds every jar and uploads each one, tagged with its Minecraft releases (`mod.mc_releases`), loader, Client and Java version.
 Use `--dry-run` first to see what would be uploaded.
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Upload the built jars (every Minecraft version and loader) to CurseForge.
 #
-# Usage: scripts/publish-curseforge.sh [--type release|beta|alpha] [--changelog FILE] [--only NODE]... [--no-build] [--dry-run]
+# Usage: scripts/publish-curseforge.sh [--type release|beta|alpha (default release)] [--changelog FILE] [--only NODE]... [--no-build] [--dry-run]
 #   NODE is a Stonecutter node such as 1.21.11-fabric. Without --only, every jar in build/libs/<mod version>/ is uploaded.
 #
 # Needs:
@@ -13,7 +13,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-TYPE=beta; CHANGELOG=""; DRY=0; BUILD=1; ONLY=()
+TYPE=release; CHANGELOG=""; DRY=0; BUILD=1; ONLY=()
 CRED_FILE="${CURSEFORGE_CRED_FILE:-$HOME/.config/curseforge.cred}"
 while [[ $# -gt 0 ]]; do
   case "$1" in

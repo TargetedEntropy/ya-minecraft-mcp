@@ -103,6 +103,8 @@ check locate_biome '{"biome":"minecraft:plains"}'
 check fishing_status '{}' holding_rod
 check highlight '{"x":0,"y":64,"z":0,"label":"smoke"}' marker_id
 check screenshot '{}'
+check screenshot '{"max_width":320,"dy":6,"pitch":60}' distance_from_player
+check screenshot '{"max_width":320,"yaw":180}' distance_from_player
 check clear_highlights '{}'
 check look_at '{"yaw":0,"pitch":0}'
 check select_slot '{"slot":1}'

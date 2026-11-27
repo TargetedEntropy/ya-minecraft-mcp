@@ -23,6 +23,12 @@ public interface Settings {
 
     boolean enableLocate();
 
+    /** Farthest a screenshot freecam may be from the player, in blocks; 0 disables freecam. */
+    int freecamMaxDistance();
+
+    /** Allow freecam on multiplayer servers (it is always allowed in singleplayer and on a LAN world you host). */
+    boolean freecamOnMultiplayer();
+
     /** Number of recent game events kept. */
     int eventBufferSize();
 

@@ -35,6 +35,13 @@ public final class YamcMcpNeoForge {
         bus.addListener(ScreenEvent.Closing.class, e -> ClientEvents.screenClosing(e.getScreen()));
         bus.addListener(ClientPlayerNetworkEvent.LoggingIn.class, e -> ClientEvents.loggingIn());
         bus.addListener(ClientPlayerNetworkEvent.LoggingOut.class, e -> ClientEvents.loggingOut());
+        bus.addListener(net.neoforged.neoforge.client.event.ViewportEvent.ComputeCameraAngles.class, e -> {
+            var angles = dev.yamc.mcp.client.Capture.angleOverride();
+            if (angles != null) {
+                e.setYaw(angles.yaw());
+                e.setPitch(angles.pitch());
+            }
+        });
         //? if >=26.1 {
         /*bus.addListener(RenderLevelStageEvent.AfterOpaqueFeatures.class, e ->
                 ClientEvents.renderLevel(e.getPoseStack(), dev.yamc.mcp.util.Mc.camera(net.minecraft.client.Minecraft.getInstance())));

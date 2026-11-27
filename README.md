@@ -79,8 +79,12 @@ Every response reports a `source` (`static`, `synced`, `integrated_server`, `cli
 **World:** `world_info`, `look_target`, `block_at`, `blocks_at`, `scan_area`, `find_blocks`, `nearby_entities`, `entity_info`, `players_online`, `open_container`, `hud`
 **Registries & tags:** `registry_list`, `registry_entries`, `registry_entry`, `tags_list`, `tag_members`, `tags_of`
 **Recipes:** `recipe_types`, `recipes_search`, `recipe_get`, `craft_plan`, `craftable_now`
-**Info:** `mods_list`, `item_tooltip`, `advancements`, `statistics`, `chat_history`, `events_since`, `wait_for_event`, `push_settings`, `screenshot`, `export_data`
+**Info:** `mods_list`, `item_tooltip`, `advancements`, `statistics`, `chat_history`, `events_since`, `wait_for_event`, `push_settings`, `export_data`
 **Singleplayer server data:** `loot_table`, `structure_info`, `locate_structure`, `locate_biome`
+**Screenshot:** `screenshot` shows the AI what the player sees. With a camera position (`x/y/z`, or `dx/dy/dz` from the player's
+eyes) or direction (`look_at_x/y/z`, `look_at_entity`, `yaw/pitch`) it becomes a freecam: a view from above, around a corner or
+of the player, without moving the player or sending anything to the server. Up to 32 blocks from the player, loaded chunks
+only, and singleplayer/LAN host only unless enabled for multiplayer (see Config).
 **Fishing:** `fishing_status`, `fish` (casts, waits for a bite and reels in; bites and catches are also `fish_bite` / `fish_caught` events)
 **Actions:** `send_chat`, `run_command`, `look_at`, `select_slot`, `interact`, `mine_block`, `move`, `container_click`, `open_inventory`, `close_screen`, `highlight`, `clear_highlights`, `notify_player`
 
@@ -94,6 +98,9 @@ NeoForge: `config/yamcmcp-client.toml`. Fabric: `config/yamcmcp.properties` (sam
 - `server.port` (25599), `server.bindAddress` (127.0.0.1), `server.requireToken` (true), `server.clientThreadTimeoutMs`
 - `tools.enableActions` (true): set false for a read-only mod. Action tools are then hidden.
 - `tools.enableIntegratedServerTools` (true), `tools.enableLocate` (true), `tools.eventBufferSize`
+- `tools.freecamMaxDistance` (32): how far the screenshot camera may go from the player; 0 turns freecam off.
+- `tools.freecamOnMultiplayer` (false): allow freecam on multiplayer servers. Many servers count freecam as cheating, since it
+  can see through walls.
 - `push.enabled` (true), `push.eventTypes` (empty = defaults listed above)
 
 ## Security
@@ -114,7 +121,7 @@ Gradle runs on JDK 25 (Stonecutter needs it); JDK 21 is also used as the toolcha
 - `./gradlew buildAll`: every jar, collected in `build/libs/<mod version>/`. One node: `./gradlew :26.3-neoforge:build`.
 - `./gradlew :<node>:runClient`, or `:<node>:runTestClient` for a client in `run-test/<node>/` that auto-creates and joins a
   singleplayer world named `mcptest`. Headless: `xvfb-run -a ./gradlew :<node>:runTestClient`.
-- `scripts/smoke-test.sh <node>`: launches that test client, calls 35 tools over MCP and reports pass/fail.
+- `scripts/smoke-test.sh <node>`: launches that test client, makes 37 tool calls over MCP and reports pass/fail.
 - The source is kept in the `1.21.1-neoforge` state. Version-specific code is marked with Stonecutter comments
   (`//? if >=1.21.2 {` ... `//?} else {` ... `//?}`). To work on another version in the IDE, run
   `./gradlew "Set active project to 26.3-fabric"`, and `./gradlew "Reset active project"` before committing.

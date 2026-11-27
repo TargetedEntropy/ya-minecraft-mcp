@@ -329,6 +329,21 @@ public final class Mc {
         mc.setScreen(s);
     }
 
+    /** Whether the HUD (and the hand) is hidden, as with F1. */
+    public static boolean hudHidden(Minecraft mc) {
+        //? if >=26.2 {
+        /*return mc.gui.hud.isHidden();
+        *///?} else
+        return mc.options.hideGui;
+    }
+
+    public static void setHudHidden(Minecraft mc, boolean hidden) {
+        //? if >=26.2 {
+        /*if (mc.gui.hud.isHidden() != hidden) mc.gui.hud.toggle();
+        *///?} else
+        mc.options.hideGui = hidden;
+    }
+
     public static net.minecraft.client.Camera camera(Minecraft mc) {
         //? if >=26.2 {
         /*return mc.gameRenderer.mainCamera();

@@ -16,6 +16,8 @@ final class NeoForgeConfig implements Settings {
     static final ModConfigSpec.BooleanValue ENABLE_ACTIONS;
     static final ModConfigSpec.BooleanValue ENABLE_INTEGRATED_SERVER_TOOLS;
     static final ModConfigSpec.BooleanValue ENABLE_LOCATE;
+    static final ModConfigSpec.IntValue FREECAM_MAX_DISTANCE;
+    static final ModConfigSpec.BooleanValue FREECAM_ON_MULTIPLAYER;
     static final ModConfigSpec.IntValue CLIENT_THREAD_TIMEOUT_MS;
     static final ModConfigSpec.IntValue EVENT_BUFFER_SIZE;
     static final ModConfigSpec.BooleanValue PUSH_ENABLED;
@@ -40,6 +42,10 @@ final class NeoForgeConfig implements Settings {
                 .define("enableIntegratedServerTools", true);
         ENABLE_LOCATE = b.comment("Allow locate_structure / locate_biome (singleplayer only).")
                 .define("enableLocate", true);
+        FREECAM_MAX_DISTANCE = b.comment("Farthest the screenshot freecam may be from the player, in blocks; 0 disables freecam.")
+                .defineInRange("freecamMaxDistance", 32, 0, 256);
+        FREECAM_ON_MULTIPLAYER = b.comment("Allow the screenshot freecam on multiplayer servers (always allowed in singleplayer/LAN host). Many servers treat freecam as cheating.")
+                .define("freecamOnMultiplayer", false);
         EVENT_BUFFER_SIZE = b.comment("Number of recent game events kept for events_since / wait_for_event.")
                 .defineInRange("eventBufferSize", 1000, 50, 20000);
         b.pop();
@@ -64,6 +70,8 @@ final class NeoForgeConfig implements Settings {
     @Override public boolean enableActions() { return ENABLE_ACTIONS.get(); }
     @Override public boolean enableIntegratedServerTools() { return ENABLE_INTEGRATED_SERVER_TOOLS.get(); }
     @Override public boolean enableLocate() { return ENABLE_LOCATE.get(); }
+    @Override public int freecamMaxDistance() { return FREECAM_MAX_DISTANCE.get(); }
+    @Override public boolean freecamOnMultiplayer() { return FREECAM_ON_MULTIPLAYER.get(); }
     @Override public int eventBufferSize() { return EVENT_BUFFER_SIZE.get(); }
     @Override public boolean pushEnabled() { return PUSH_ENABLED.get(); }
     @Override public List<String> pushEventTypes() { return List.copyOf(PUSH_EVENT_TYPES.get()); }

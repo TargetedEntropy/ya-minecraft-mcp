@@ -59,6 +59,10 @@ public final class FileSettings implements Settings {
             enableIntegratedServerTools=true
             # Allow locate_structure / locate_biome (singleplayer only).
             enableLocate=true
+            # Farthest the screenshot freecam may be from the player, 0-256 blocks; 0 disables freecam.
+            freecamMaxDistance=32
+            # Allow the screenshot freecam on multiplayer servers (always allowed in singleplayer/LAN host). Many servers treat freecam as cheating.
+            freecamOnMultiplayer=false
             # Number of recent game events kept for events_since / wait_for_event, 50-20000.
             eventBufferSize=1000
 
@@ -90,6 +94,8 @@ public final class FileSettings implements Settings {
     @Override public boolean enableActions() { return bool("enableActions", true); }
     @Override public boolean enableIntegratedServerTools() { return bool("enableIntegratedServerTools", true); }
     @Override public boolean enableLocate() { return bool("enableLocate", true); }
+    @Override public int freecamMaxDistance() { return integer("freecamMaxDistance", 32, 0, 256); }
+    @Override public boolean freecamOnMultiplayer() { return bool("freecamOnMultiplayer", false); }
     @Override public int eventBufferSize() { return integer("eventBufferSize", 1000, 50, 20000); }
     @Override public boolean pushEnabled() { return bool("push.enabled", true); }
 

@@ -1,13 +1,10 @@
 package dev.yamc.mcp.tools;
 
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.CompletableFuture;
 import dev.yamc.mcp.util.Mc;
 import dev.yamc.mcp.platform.Platform;
 import dev.yamc.mcp.YamcMcp;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import com.mojang.blaze3d.platform.NativeImage;
 import dev.yamc.mcp.mcp.Args;
 import dev.yamc.mcp.mcp.Schema;
 import dev.yamc.mcp.mcp.Tool;
@@ -32,7 +29,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
 
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -103,43 +99,6 @@ final class InfoTools {
                         .bool("refresh", "Request updated stats from the server first (default true).").paging(100))
                 .anyThread()
                 .handler(InfoTools::statistics));
-
-        r.add(Tool.builder("screenshot").title("Screenshot")
-                .desc("Capture the current game frame as a PNG image so you can see what the player sees (including open GUIs).")
-                .schema(Schema.of().integer("max_width", "Downscale to at most this width (default 1280, max 3840)."))
-                .anyThread()
-                .handler(a -> {
-                    Minecraft mc = Minecraft.getInstance();
-                    int maxW = a.integer("max_width", 1280, 64, 3840);
-                    // Capture on the client thread; newer versions deliver the image after a GPU readback, so wait here.
-                    CompletableFuture<NativeImage> shot = new CompletableFuture<>();
-                    String screen = ClientThread.call(() -> {
-                        Mc.screenshot(mc, shot::complete);
-                        return Mc.screen(mc) == null ? "in-game" : Mc.screen(mc).getClass().getSimpleName();
-                    });
-                    try (NativeImage img = shot.get(10, TimeUnit.SECONDS)) {
-                        NativeImage out = img;
-                        boolean scaled = false;
-                        if (img.getWidth() > maxW) {
-                            int h = Math.max(1, img.getHeight() * maxW / img.getWidth());
-                            out = new NativeImage(maxW, h, false);
-                            img.resizeSubRectTo(0, 0, img.getWidth(), img.getHeight(), out);
-                            scaled = true;
-                        }
-                        try {
-                            byte[] png = Mc.png(out);
-                            JsonObject meta = new JsonObject();
-                            meta.addProperty("width", out.getWidth());
-                            meta.addProperty("height", out.getHeight());
-                            meta.addProperty("screen", screen);
-                            return new ToolResult().image(Base64.getEncoder().encodeToString(png), "image/png").text(meta.toString());
-                        } finally {
-                            if (scaled) out.close();
-                        }
-                    } catch (java.util.concurrent.TimeoutException e) {
-                        throw new ToolException("The game did not deliver the screenshot within 10s (is the window minimized?).");
-                    }
-                }));
     }
 
     static JsonObject advancements(Args a) {

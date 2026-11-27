@@ -24,8 +24,8 @@ The Fabric jars need [Fabric API](https://modrinth.com/mod/fabric-api).
 
 ## Install & connect
 
-1. Download the jar for your Minecraft version and loader from the [releases](https://github.com/TargetedEntropy/ya-minecraft-mcp/releases)
-   (or build it, see [Development](#development)) and drop it into your `mods/` folder.
+1. Download the jar for your Minecraft version and loader from [CurseForge](https://www.curseforge.com/projects/1831975) or the
+   [GitHub releases](https://github.com/TargetedEntropy/ya-minecraft-mcp/releases) (or build it, see [Development](#development)) and drop it into your `mods/` folder.
 2. Launch the game. The server listens on `http://127.0.0.1:25599/mcp`.
 3. In game, run `/yamc connect`. It copies the setup command to your clipboard:
    ```
@@ -102,6 +102,8 @@ NeoForge: `config/yamcmcp-client.toml`. Fabric: `config/yamcmcp.properties` (sam
 - Requires a bearer token.
 - Rejects browser requests from non-localhost `Origin`s (DNS-rebinding protection).
 - With actions enabled, the AI can chat and run commands as you. On multiplayer servers that is visible to others and may break server rules.
+
+To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## Development
 

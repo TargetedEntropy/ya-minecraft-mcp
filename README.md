@@ -24,7 +24,7 @@ The Fabric jars need [Fabric API](https://modrinth.com/mod/fabric-api).
 
 ## Install & connect
 
-1. Download the jar for your Minecraft version and loader from [CurseForge](https://www.curseforge.com/projects/1831975) or the
+1. Download the jar for your Minecraft version and loader from [Modrinth](https://modrinth.com/mod/yamc-mcp), [CurseForge](https://www.curseforge.com/projects/1831975) or the
    [GitHub releases](https://github.com/TargetedEntropy/ya-minecraft-mcp/releases) (or build it, see [Development](#development)) and drop it into your `mods/` folder.
 2. Launch the game. The server listens on `http://127.0.0.1:25599/mcp`.
 3. In game, run `/yamc connect`. It copies the setup command to your clipboard:
@@ -125,11 +125,21 @@ Gradle runs on JDK 25 (Stonecutter needs it); JDK 21 is also used as the toolcha
 ## Publishing to CurseForge
 
 `scripts/publish-curseforge.sh [--type release|beta|alpha (default release)] [--changelog notes.md] [--only <node>]... [--no-build] [--dry-run]`
-builds every jar and uploads each one, tagged with its Minecraft releases (`mod.mc_releases`), loader, Client and Java version.
+builds every jar and uploads each one, tagged with its Minecraft releases, loader, Client and Java version.
 Use `--dry-run` first to see what would be uploaded.
 
 - Token: from `CURSEFORGE_TOKEN`, or from a file containing `TOKEN=...` (default `~/.config/curseforge.cred`).
 - Project id: from `CURSEFORGE_PROJECT_ID`, or `mod.curseforge_project_id` in `stonecutter.properties.toml`.
+
+## Publishing to Modrinth
+
+`scripts/publish-modrinth.sh` takes the same options. It creates the project (`mod.modrinth_project`) if it does not exist and
+submits it for review, and skips versions already uploaded, so re-running it is safe. Fabric versions depend on Fabric API.
+
+- Token: a Modrinth PAT from `MODRINTH_TOKEN`, or from a file containing `PAT=...` (default `~/.config/modrinth.creds`).
+
+Jars are tagged with `mod.mc_releases` from the loader's section (default: the version it was built for). Keep it in step
+with `mod.mc_compat`, the range the loader actually accepts.
 
 ## License
 

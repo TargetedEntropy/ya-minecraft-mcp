@@ -68,7 +68,7 @@ for JAR in "${JARS[@]}"; do
 import json, sys, tomllib
 tmp, mc, loader, version, rtype, changelog = sys.argv[1:7]
 props = tomllib.load(open("stonecutter.properties.toml", "rb"))
-releases = props.get(mc, {}).get("mod", {}).get("mc_releases", [mc])
+releases = props.get(loader, {}).get(mc, {}).get("mod", {}).get("mc_releases", [mc])
 types = {t["id"]: t["slug"] for t in json.load(open(tmp + "/types.json"))}
 versions = json.load(open(tmp + "/versions.json"))
 def find(label, pred, required=True):

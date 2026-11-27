@@ -129,24 +129,18 @@ Gradle runs on JDK 25 (Stonecutter needs it); JDK 21 is also used as the toolcha
   `recipe/Recipes` (the recipe API), `util/Mc` (small API differences), `util/Inventories`, `client/Markers` (rendering).
   Tools call these instead of writing version conditions themselves.
 
-## Publishing to CurseForge
+## Publishing
 
-`scripts/publish-curseforge.sh [--type release|beta|alpha (default release)] [--changelog notes.md] [--only <node>]... [--no-build] [--dry-run]`
-builds every jar and uploads each one, tagged with its Minecraft releases, loader, Client and Java version.
-Use `--dry-run` first to see what would be uploaded.
+`scripts/publish.py curseforge|modrinth|all [--type release|beta|alpha] [--changelog notes.md] [--only <node>]... [--no-build] [--dry-run]`
+builds every jar and uploads each one (default type: release). Use `--dry-run` first to see what would be uploaded.
 
-- Token: from `CURSEFORGE_TOKEN`, or from a file containing `TOKEN=...` (default `~/.config/curseforge.cred`).
-- Project id: from `CURSEFORGE_PROJECT_ID`, or `mod.curseforge_project_id` in `stonecutter.properties.toml`.
-
-## Publishing to Modrinth
-
-`scripts/publish-modrinth.sh` takes the same options. It creates the project (`mod.modrinth_project`) if it does not exist and
-submits it for review, and skips versions already uploaded, so re-running it is safe. Fabric versions depend on Fabric API.
-
-- Token: a Modrinth PAT from `MODRINTH_TOKEN`, or from a file containing `PAT=...` (default `~/.config/modrinth.creds`).
-
-Jars are tagged with `mod.mc_releases` from the loader's section (default: the version it was built for). Keep it in step
-with `mod.mc_compat`, the range the loader actually accepts.
+- Each jar is tagged with `mod.mc_releases` from its loader's section in `stonecutter.properties.toml` (default: the version
+  it was built for). Keep it in step with `mod.mc_compat`, the range the loader actually accepts.
+- CurseForge: token from `CURSEFORGE_TOKEN` or a file containing `TOKEN=...` (default `~/.config/curseforge.cred`); project id
+  from `mod.curseforge_project_id`. Every run uploads new files.
+- Modrinth: personal access token from `MODRINTH_TOKEN` or a file containing `PAT=...` (default `~/.config/modrinth.creds`);
+  project from `mod.modrinth_project`. Creates the project and submits it for review if needed, and skips versions already
+  uploaded, so re-running is safe. Fabric versions depend on Fabric API.
 
 ## License
 

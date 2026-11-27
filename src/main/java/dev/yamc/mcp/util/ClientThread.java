@@ -1,6 +1,6 @@
 package dev.yamc.mcp.util;
 
-import dev.yamc.mcp.YamcMcp;
+import dev.yamc.mcp.platform.Settings;
 import dev.yamc.mcp.mcp.ToolException;
 import net.minecraft.client.Minecraft;
 import net.minecraft.server.MinecraftServer;
@@ -31,7 +31,7 @@ public final class ClientThread {
                 f.completeExceptionally(t);
             }
         });
-        return await(f, YamcMcp.settings().clientThreadTimeoutMs(), "client thread");
+        return await(f, Settings.CLIENT_THREAD_TIMEOUT_MS.get(), "client thread");
     }
 
     public static <T> T callServer(MinecraftServer server, Callable<T> task, long timeoutMs) throws Exception {

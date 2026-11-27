@@ -22,7 +22,7 @@ import net.neoforged.neoforge.event.GameShuttingDownEvent;
 @Mod(value = YamcMcp.MOD_ID, dist = Dist.CLIENT)
 public final class YamcMcpNeoForge {
     public YamcMcpNeoForge(IEventBus modBus, ModContainer container) {
-        container.registerConfig(ModConfig.Type.CLIENT, NeoForgeConfig.SPEC);
+        container.registerConfig(ModConfig.Type.CLIENT, NeoForgeConfig.INSTANCE.spec);
         YamcMcp.init(new NeoForgePlatform(), container.getModInfo().getVersion().toString());
 
         modBus.addListener(FMLClientSetupEvent.class, e -> e.enqueueWork(ClientEvents::setup));
@@ -36,10 +36,10 @@ public final class YamcMcpNeoForge {
         bus.addListener(ClientPlayerNetworkEvent.LoggingIn.class, e -> ClientEvents.loggingIn());
         bus.addListener(ClientPlayerNetworkEvent.LoggingOut.class, e -> ClientEvents.loggingOut());
         bus.addListener(net.neoforged.neoforge.client.event.ViewportEvent.ComputeCameraAngles.class, e -> {
-            var angles = dev.yamc.mcp.client.Capture.angleOverride();
-            if (angles != null) {
-                e.setYaw(angles.yaw());
-                e.setPitch(angles.pitch());
+            var turn = dev.yamc.mcp.client.Capture.turning();
+            if (turn != null) {
+                e.setYaw(turn.yaw());
+                e.setPitch(turn.pitch());
             }
         });
         //? if >=26.1 {

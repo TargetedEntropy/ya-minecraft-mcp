@@ -16,7 +16,7 @@ import java.util.Map;
  * uses only this and vanilla Minecraft.
  */
 public interface Platform {
-    Settings settings();
+    Settings.Source settings();
 
     Path configDir();
 

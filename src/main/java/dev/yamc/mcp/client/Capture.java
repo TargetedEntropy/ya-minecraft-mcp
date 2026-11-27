@@ -11,74 +11,161 @@ import net.minecraft.world.entity.Marker;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Captures a frame rendered with temporary view settings: a camera somewhere else or facing another way ("freecam"),
- * a different FOV, or the HUD hidden. Nothing about the player changes and nothing is sent to the server. A moved camera
- * is an invisible entity that is never added to the world; a camera that stays at the player's eyes keeps the player as
- * the camera entity (so their own model is not drawn around it) and only its angles are overridden, through the loader
- * (NeoForge's ComputeCameraAngles event, a Camera mixin on Fabric). Every setting is restored when the job ends.
+ * Captures a game frame, optionally rendered with temporary {@link Change}s to the view (camera, FOV, HUD). Each change
+ * applies itself and returns its undo; the undos run in reverse when the job ends, however it ends. Nothing about the
+ * player changes and nothing is sent to the server.
  */
 public final class Capture {
-    /**
-     * @param camera where the camera is and where it looks, or null to keep the player's view
-     * @param fov field of view in degrees, or null to keep the player's
-     */
-    public record View(@Nullable Pose camera, @Nullable Integer fov, boolean hideHud) {}
+    /** A temporary change to the view. */
+    public sealed interface Change permits HideHud, Fov, Turn, Move {
+        /** Applies the change on the client thread and returns how to undo it. */
+        Runnable apply(Minecraft mc);
 
-    /** @param atEyes the camera stays at the player's eyes and only turns */
-    public record Pose(Vec3 pos, float yaw, float pitch, boolean atEyes) {}
+        /** Ticks after applying before a frame shows the change. */
+        int settleTicks();
 
-    /** @param complete false if the world was still being built (chunk sections compiling) when the wait ran out */
-    public record Shot(NativeImage image, boolean complete) {}
-
-    /**
-     * Ticks before capturing after a camera move: the camera eases its eye height toward the new entity's (it halves
-     * the gap each tick), so 8 ticks leaves under 0.01 blocks of the player's eye height.
-     */
-    private static final int MOVED_TICKS = 8;
-    /** Ticks before capturing after only turning the camera: a frame or two to queue the newly visible chunk sections. */
-    private static final int TURNED_TICKS = 3;
-    /** Ticks before capturing after only a HUD/FOV change: enough for a frame drawn with it. */
-    private static final int SETTINGS_TICKS = 2;
-
-    /** Only touched on the client thread. */
-    private static boolean busy;
-    private static @Nullable Pose angles;
-
-    /** Camera angles the loader should apply this frame instead of the player's, or null. Client thread only. */
-    public static @Nullable Pose angleOverride() {
-        return angles;
+        /** Whether the view shows parts of the world the player was not looking at, whose chunk sections must be built. */
+        default boolean revealsWorld() {
+            return false;
+        }
     }
 
-    private Capture() {}
+    /** Hide the HUD and hand, as with F1. */
+    public record HideHud() implements Change {
+        @Override
+        public Runnable apply(Minecraft mc) {
+            boolean was = Mc.hudHidden(mc);
+            Mc.setHudHidden(mc, true);
+            return () -> Mc.setHudHidden(mc, was);
+        }
 
-    /** Call on the client thread (as a {@link Ticker} setup). Applies the view now; the job captures once it has settled. */
-    public static Ticker.Job<Shot> start(Minecraft mc, View view, long maxWaitMs) {
-        if (busy) throw new ToolException("Another screenshot is being taken; try again in a moment.");
-        Saved saved = new Saved(mc.getCameraEntity(), mc.options.getCameraType(), Mc.hudHidden(mc), mc.options.fov().get());
-        busy = true;
-        Pose c = view.camera();
-        if (c != null && c.atEyes()) {
-            angles = c;
-            mc.options.setCameraType(CameraType.FIRST_PERSON);
-        } else if (c != null) {
+        @Override
+        public int settleTicks() {
+            return 2;
+        }
+    }
+
+    public record Fov(int degrees) implements Change {
+        @Override
+        public Runnable apply(Minecraft mc) {
+            int was = mc.options.fov().get();
+            mc.options.fov().set(degrees);
+            return () -> mc.options.fov().set(was);
+        }
+
+        @Override
+        public int settleTicks() {
+            return 2;
+        }
+    }
+
+    /**
+     * Turn the camera at the player's eyes. The player stays the camera entity (so their own model is not drawn around
+     * the camera) and only the angles are overridden, through the loader: NeoForge's ComputeCameraAngles event, a
+     * Camera mixin on Fabric, both reading {@link #turning()}.
+     */
+    public record Turn(float yaw, float pitch) implements Change {
+        @Override
+        public Runnable apply(Minecraft mc) {
+            Runnable firstPerson = firstPerson(mc);
+            turning = this;
+            return () -> {
+                turning = null;
+                firstPerson.run();
+            };
+        }
+
+        /** A frame or two for the newly visible chunk sections to be queued. */
+        @Override
+        public int settleTicks() {
+            return 3;
+        }
+
+        @Override
+        public boolean revealsWorld() {
+            return true;
+        }
+    }
+
+    /** Move the camera: an invisible entity, never added to the world, becomes the camera entity. */
+    public record Move(Vec3 pos, float yaw, float pitch) implements Change {
+        @Override
+        public Runnable apply(Minecraft mc) {
             //? if >=26.2 {
             /*Marker eye = new Marker(net.minecraft.world.entity.EntityTypes.MARKER, mc.level);
             *///?} else
             Marker eye = new Marker(EntityType.MARKER, mc.level);
-            eye.setPos(c.pos().x, c.pos().y, c.pos().z);
-            eye.setYRot(c.yaw());
-            eye.setXRot(c.pitch());
+            eye.setPos(pos.x, pos.y, pos.z);
+            eye.setYRot(yaw);
+            eye.setXRot(pitch);
             eye.setOldPosAndRot();
+            Entity was = mc.getCameraEntity();
+            Runnable firstPerson = firstPerson(mc);
             mc.setCameraEntity(eye);
-            mc.options.setCameraType(CameraType.FIRST_PERSON);
+            return () -> {
+                mc.setCameraEntity(was == null || was.isRemoved() || was.level() != mc.level ? mc.player : was);
+                firstPerson.run();
+            };
         }
-        if (view.hideHud()) Mc.setHudHidden(mc, true);
-        if (view.fov() != null) mc.options.fov().set(view.fov());
+
+        /**
+         * The camera eases its eye height toward the new entity's, halving the gap each tick: after 8 ticks less than
+         * 0.01 blocks of the player's eye height is left.
+         */
+        @Override
+        public int settleTicks() {
+            return 8;
+        }
+
+        @Override
+        public boolean revealsWorld() {
+            return true;
+        }
+    }
+
+    /** @param complete false if the world was still being built (chunk sections compiling) when the wait ran out */
+    public record Shot(NativeImage image, boolean complete) {}
+
+    /** Only touched on the client thread. */
+    private static boolean busy;
+    private static @Nullable Turn turning;
+
+    private Capture() {}
+
+    /** The camera turn the loader should apply this frame, or null. Client thread only. */
+    public static @Nullable Turn turning() {
+        return turning;
+    }
+
+    /** Third-person camera off for the capture: a moved or turned camera is the view itself. */
+    private static Runnable firstPerson(Minecraft mc) {
+        CameraType was = mc.options.getCameraType();
+        mc.options.setCameraType(CameraType.FIRST_PERSON);
+        return () -> mc.options.setCameraType(was);
+    }
+
+    /**
+     * Call on the client thread (as a {@link Ticker} setup). Applies the changes now (all or none) and returns the job
+     * that captures once they have settled, or after {@code maxWaitMs} with {@link Shot#complete()} false.
+     */
+    public static Ticker.Job<Shot> start(Minecraft mc, List<Change> changes, long maxWaitMs) {
+        if (busy) throw new ToolException("Another screenshot is being taken; try again in a moment.");
+        List<Runnable> undo = new ArrayList<>();
+        try {
+            for (Change c : changes) undo.add(c.apply(mc));
+        } catch (RuntimeException e) {
+            undo.reversed().forEach(Runnable::run);
+            throw e;
+        }
+        busy = true;
+        int settleTicks = changes.stream().mapToInt(Change::settleTicks).max().orElse(0);
+        boolean revealsWorld = changes.stream().anyMatch(Change::revealsWorld);
         long deadline = System.currentTimeMillis() + maxWaitMs;
-        int minTicks = c == null ? SETTINGS_TICKS : c.atEyes() ? TURNED_TICKS : MOVED_TICKS;
 
         return new Ticker.Job<>() {
             final CompletableFuture<NativeImage> image = new CompletableFuture<>();
@@ -89,11 +176,9 @@ public final class Capture {
             public Shot step() {
                 if (image.isDone()) return new Shot(image.join(), complete);
                 if (requested) return null; // newer versions deliver the image after a GPU readback
-                ticks++;
-                // Chunk sections the player was not looking at are compiled once the camera sees them; wait until the
-                // queue stays empty for two ticks (a fresh view queues its sections over a frame or two).
-                builtTicks = view.camera() == null || mc.levelRenderer.hasRenderedAllSections() ? builtTicks + 1 : 0;
-                complete = ticks >= minTicks && builtTicks >= 2;
+                // Newly visible chunk sections are queued over a frame or two: wait until the queue stays empty for two ticks.
+                builtTicks = !revealsWorld || mc.levelRenderer.hasRenderedAllSections() ? builtTicks + 1 : 0;
+                complete = ++ticks >= settleTicks && (!revealsWorld || builtTicks >= 2);
                 if (complete || System.currentTimeMillis() > deadline) {
                     requested = true;
                     Mc.screenshot(mc, image::complete);
@@ -103,23 +188,10 @@ public final class Capture {
 
             @Override
             public void end(boolean completed) {
-                saved.restore(mc, view);
+                undo.reversed().forEach(Runnable::run);
                 busy = false;
-                if (!completed && image.isDone()) image.join().close(); // nobody will use it
+                if (!completed) image.thenAccept(NativeImage::close); // nobody will use it, even if it arrives later
             }
         };
-    }
-
-    private record Saved(@Nullable Entity camera, CameraType cameraType, boolean hudHidden, int fov) {
-        void restore(Minecraft mc, View view) {
-            if (view.camera() != null) {
-                if (!view.camera().atEyes())
-                    mc.setCameraEntity(camera == null || camera.isRemoved() || camera.level() != mc.level ? mc.player : camera);
-                angles = null;
-                mc.options.setCameraType(cameraType);
-            }
-            if (view.hideHud()) Mc.setHudHidden(mc, hudHidden);
-            if (view.fov() != null) mc.options.fov().set(fov);
-        }
     }
 }

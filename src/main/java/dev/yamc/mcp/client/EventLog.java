@@ -1,6 +1,6 @@
 package dev.yamc.mcp.client;
 
-import dev.yamc.mcp.YamcMcp;
+import dev.yamc.mcp.platform.Settings;
 import com.google.gson.JsonObject;
 
 import java.util.ArrayDeque;
@@ -42,7 +42,7 @@ public final class EventLog {
         synchronized (EVENTS) {
             ev = new Event(++seq, System.currentTimeMillis(), type, data);
             EVENTS.addLast(ev);
-            int max = YamcMcp.settings().eventBufferSize();
+            int max = Settings.EVENT_BUFFER_SIZE.get();
             while (EVENTS.size() > max) EVENTS.removeFirst();
             EVENTS.notifyAll();
         }

@@ -20,8 +20,8 @@ abstract class CameraMixin {
     ^///?} else
     @Inject(method = "setup", at = @At("TAIL"))
     private void yamcmcp$overrideAngles(CallbackInfo ci) {
-        Capture.Pose angles = Capture.angleOverride();
-        if (angles != null) setRotation(angles.yaw(), angles.pitch());
+        Capture.Turn turn = Capture.turning();
+        if (turn != null) setRotation(turn.yaw(), turn.pitch());
     }
 }
 *///?}

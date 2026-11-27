@@ -1,6 +1,6 @@
 package dev.yamc.mcp.util;
 
-import dev.yamc.mcp.YamcMcp;
+import dev.yamc.mcp.platform.Settings;
 import dev.yamc.mcp.mcp.ToolException;
 import net.minecraft.client.Minecraft;
 import net.minecraft.server.MinecraftServer;
@@ -13,7 +13,7 @@ public final class IntegratedServer {
 
     @Nullable
     public static MinecraftServer get() {
-        if (!YamcMcp.settings().enableIntegratedServerTools()) return null;
+        if (!Settings.ENABLE_INTEGRATED_SERVER_TOOLS.get()) return null;
         return Minecraft.getInstance().getSingleplayerServer();
     }
 
@@ -21,7 +21,7 @@ public final class IntegratedServer {
     public static MinecraftServer require() {
         MinecraftServer s = get();
         if (s != null) return s;
-        if (!YamcMcp.settings().enableIntegratedServerTools())
+        if (!Settings.ENABLE_INTEGRATED_SERVER_TOOLS.get())
             throw new ToolException("Integrated-server data is disabled (config: tools.enableIntegratedServerTools=false).");
         throw new ToolException("This needs the integrated server: it only works in singleplayer or when hosting a LAN world"
                 + " (server-only data like structures and loot tables is never sent to clients).");

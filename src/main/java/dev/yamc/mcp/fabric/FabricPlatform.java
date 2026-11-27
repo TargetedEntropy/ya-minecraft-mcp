@@ -22,10 +22,10 @@ import java.util.Map;
 
 final class FabricPlatform implements Platform {
     private final FabricLoader loader = FabricLoader.getInstance();
-    private Settings settings;
+    private Settings.Source settings;
 
     @Override
-    public Settings settings() {
+    public Settings.Source settings() {
         if (settings == null) settings = FileSettings.load(configDir().resolve("yamcmcp.properties"));
         return settings;
     }

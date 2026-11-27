@@ -23,7 +23,7 @@ import java.util.Map;
 
 final class NeoForgePlatform implements Platform {
     @Override
-    public Settings settings() {
+    public Settings.Source settings() {
         return NeoForgeConfig.INSTANCE;
     }
 

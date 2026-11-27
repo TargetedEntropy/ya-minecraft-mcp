@@ -1,5 +1,6 @@
 package dev.yamc.mcp.push;
 
+import dev.yamc.mcp.platform.Settings;
 import dev.yamc.mcp.YamcMcp;
 import dev.yamc.mcp.client.GameEvent;
 
@@ -24,7 +25,7 @@ public final class PushPolicy {
 
     private static EnumSet<GameEvent> fromConfig() {
         EnumSet<GameEvent> s = EnumSet.noneOf(GameEvent.class);
-        for (String id : YamcMcp.settings().pushEventTypes()) {
+        for (String id : Settings.PUSH_EVENT_TYPES.get()) {
             GameEvent e = GameEvent.byId(id);
             if (e != null) s.add(e);
             else YamcMcp.LOGGER.warn("Ignoring unknown event type '{}' in push.eventTypes", id);
@@ -38,7 +39,7 @@ public final class PushPolicy {
     }
 
     public static boolean enabled() {
-        return enabled && YamcMcp.settings().pushEnabled();
+        return enabled && Settings.PUSH_ENABLED.get();
     }
 
     public static void setEnabled(boolean e) {

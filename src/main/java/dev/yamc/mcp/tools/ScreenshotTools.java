@@ -2,7 +2,6 @@ package dev.yamc.mcp.tools;
 
 import com.google.gson.JsonObject;
 import com.mojang.blaze3d.platform.NativeImage;
-import dev.yamc.mcp.YamcMcp;
 import dev.yamc.mcp.client.Capture;
 import dev.yamc.mcp.client.Ticker;
 import dev.yamc.mcp.mcp.Args;
@@ -12,7 +11,6 @@ import dev.yamc.mcp.mcp.ToolException;
 import dev.yamc.mcp.mcp.ToolRegistry;
 import dev.yamc.mcp.mcp.ToolResult;
 import dev.yamc.mcp.platform.Settings;
-import dev.yamc.mcp.util.ClientThread;
 import dev.yamc.mcp.util.Json;
 import dev.yamc.mcp.util.Mc;
 import net.minecraft.client.Minecraft;
@@ -20,21 +18,20 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
+import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.util.Locale;
+import java.util.stream.Stream;
 
 /** screenshot: the player's view as an image, optionally from a free camera (freecam). */
 final class ScreenshotTools {
     private ScreenshotTools() {}
 
-    private static final List<String> POSITION = List.of("x", "y", "z"), OFFSET = List.of("dx", "dy", "dz"),
-            LOOK_AT = List.of("look_at_x", "look_at_y", "look_at_z");
-    private static final List<String> FREECAM = List.of("x", "y", "z", "dx", "dy", "dz", "look_at_x", "look_at_y", "look_at_z",
-            "look_at_entity", "yaw", "pitch");
+    /** A camera within this distance of the player's eyes would see the inside of their head: it turns at the eyes instead. */
+    private static final double AT_EYES = 0.75;
 
     static void register(ToolRegistry r) {
         r.add(Tool.builder("screenshot").title("Screenshot")
@@ -48,10 +45,12 @@ final class ScreenshotTools {
                 .schema(Schema.of().integer("max_width", "Downscale to at most this width (default 1280, max 3840).")
                         .bool("hide_hud", "Hide the HUD and hand, as with F1 (default false).")
                         .integer("fov", "Field of view in degrees, 30-110 (default: the player's setting).")
-                        .number("x", "Freecam position X (absolute).").number("y", "Freecam position Y (absolute).").number("z", "Freecam position Z (absolute).")
+                        .number("x", "Freecam position X (with y and z).").number("y", "Freecam position Y (with x and z).")
+                        .number("z", "Freecam position Z (with x and y).")
                         .number("dx", "Freecam offset X from the player's eyes.").number("dy", "Freecam offset Y from the player's eyes.")
                         .number("dz", "Freecam offset Z from the player's eyes.")
-                        .number("look_at_x", "Point the camera at this X.").number("look_at_y", "Point the camera at this Y.")
+                        .number("look_at_x", "Point the camera at this X (with look_at_y and look_at_z).")
+                        .number("look_at_y", "Point the camera at this Y.")
                         .number("look_at_z", "Point the camera at this Z. Whole numbers aim at the block center.")
                         .integer("look_at_entity", "Point the camera at this entity (its center).")
                         .number("yaw", "Camera yaw (0=south, 90=west, 180=north, -90=east).").number("pitch", "Camera pitch (-90=up, 90=down).")
@@ -60,104 +59,133 @@ final class ScreenshotTools {
                 .handler(ScreenshotTools::screenshot));
     }
 
-    static ToolResult screenshot(Args a) throws Exception {
-        Minecraft mc = Minecraft.getInstance();
-        int maxW = a.integer("max_width", 1280, 64, 3840);
-        long maxWait = a.integer("max_wait_ms", 3000, 0, 10000);
-        boolean freecam = FREECAM.stream().anyMatch(a::has);
-        Integer fov = a.has("fov") ? a.integer("fov", 70, 30, 110) : null;
-        boolean hideHud = freecam || a.bool("hide_hud", false);
+    /** Where the camera goes: an absolute position, an offset from the player's eyes, or (null) the eyes themselves. */
+    private sealed interface Place permits Absolute, Offset {}
 
-        JsonObject meta = new JsonObject();
-        NativeImage img;
-        if (!freecam && fov == null && !hideHud) {
-            CompletableFuture<NativeImage> shot = new CompletableFuture<>();
-            ClientThread.call(() -> {
-                meta.addProperty("screen", screenName(mc));
-                Mc.screenshot(mc, shot::complete); // newer versions deliver the image after a GPU readback
-                return null;
-            });
-            try {
-                img = shot.get(10, TimeUnit.SECONDS);
-            } catch (TimeoutException e) {
-                throw new ToolException("The game did not deliver the screenshot within 10s (is the window minimized?).");
-            }
-        } else {
-            Capture.Shot shot = Ticker.run(() -> {
-                meta.addProperty("screen", screenName(mc));
-                Capture.Pose pose = null;
-                if (freecam) {
-                    pose = freecamPose(mc, a);
-                    meta.add("camera", describe(mc, pose));
-                }
-                return Capture.start(mc, new Capture.View(pose, fov, hideHud), maxWait);
-            }, maxWait + 15_000);
-            img = shot.image();
-            if (freecam) meta.addProperty("complete", shot.complete());
+    private record Absolute(Vec3 pos) implements Place {}
+
+    private record Offset(Vec3 delta) implements Place {}
+
+    /** Where the camera looks: a point, an entity, or angles (a null angle keeps the player's); null aim keeps the player's view. */
+    private sealed interface Aim permits Point, AtEntity, Angles {}
+
+    private record Point(Vec3 pos) implements Aim {}
+
+    private record AtEntity(int id) implements Aim {}
+
+    private record Angles(@Nullable Float yaw, @Nullable Float pitch) implements Aim {}
+
+    /** A screenshot call's arguments. A freecam request has a place, an aim, or both. */
+    private record Request(int maxWidth, long maxWaitMs, @Nullable Integer fov, boolean hideHud, @Nullable Place place, @Nullable Aim aim) {
+        boolean freecam() {
+            return place != null || aim != null;
         }
-        try (img) {
-            return image(img, maxW, meta);
+
+        static Request parse(Args a) {
+            Vec3 absolute = vec(a, "x", "y", "z"), point = vec(a, "look_at_x", "look_at_y", "look_at_z");
+            boolean offset = Stream.of("dx", "dy", "dz").anyMatch(a::has);
+            if (absolute != null && offset) throw new ToolException("Give either x/y/z or dx/dy/dz, not both.");
+            Place place = absolute != null ? new Absolute(absolute)
+                    : offset ? new Offset(new Vec3(a.dbl("dx", 0), a.dbl("dy", 0), a.dbl("dz", 0))) : null;
+
+            List<Aim> aims = new ArrayList<>();
+            if (point != null) aims.add(new Point(point));
+            if (a.has("look_at_entity")) aims.add(new AtEntity(a.reqInt("look_at_entity")));
+            if (a.has("yaw") || a.has("pitch"))
+                aims.add(new Angles(a.has("yaw") ? (float) a.dbl("yaw", 0) : null, a.has("pitch") ? (float) a.dbl("pitch", 0) : null));
+            if (aims.size() > 1) throw new ToolException("Give one direction: look_at_x/y/z, look_at_entity, or yaw/pitch.");
+
+            return new Request(a.integer("max_width", 1280, 64, 3840), a.integer("max_wait_ms", 3000, 0, 10000),
+                    a.has("fov") ? a.integer("fov", 70, 30, 110) : null, a.bool("hide_hud", false),
+                    place, aims.isEmpty() ? null : aims.getFirst());
+        }
+
+        /** All three coordinates, none (null), or an error for some. */
+        private static @Nullable Vec3 vec(Args a, String x, String y, String z) {
+            long given = Stream.of(x, y, z).filter(a::has).count();
+            if (given == 0) return null;
+            if (given < 3) throw new ToolException("Give all of " + x + ", " + y + " and " + z + ".");
+            return new Vec3(a.dbl(x, 0), a.dbl(y, 0), a.dbl(z, 0));
         }
     }
 
-    /** Validates the freecam request against the config and the world, and works out where the camera goes and looks. */
-    private static Capture.Pose freecamPose(Minecraft mc, Args a) {
+    static ToolResult screenshot(Args a) throws Exception {
+        Request req = Request.parse(a);
+        Minecraft mc = Minecraft.getInstance();
+        JsonObject meta = new JsonObject();
+        Capture.Shot shot = Ticker.run(() -> {
+            meta.addProperty("screen", Mc.screen(mc) == null ? "in-game" : Mc.screen(mc).getClass().getSimpleName());
+            List<Capture.Change> changes = new ArrayList<>();
+            if (req.freecam()) changes.add(camera(mc, req, meta));
+            if (req.freecam() || req.hideHud()) changes.add(new Capture.HideHud());
+            if (req.fov() != null) changes.add(new Capture.Fov(req.fov()));
+            return Capture.start(mc, changes, req.maxWaitMs());
+        }, req.maxWaitMs() + 15_000);
+        if (req.freecam()) meta.addProperty("complete", shot.complete());
+        try (NativeImage img = shot.image()) {
+            return image(img, req.maxWidth(), meta);
+        }
+    }
+
+    /** Checks the freecam against the config and the world, works out the camera, and describes it in {@code meta}. */
+    private static Capture.Change camera(Minecraft mc, Request req, JsonObject meta) {
         LocalPlayer player = Ctx.player();
         if (Mc.screen(mc) != null) throw new ToolException("Close the open screen first (close_screen): freecam shows the world only.");
-        Settings s = YamcMcp.settings();
-        int max = s.freecamMaxDistance();
+        int max = Settings.FREECAM_MAX_DISTANCE.get();
         if (max == 0) throw new ToolException("Freecam is disabled (config: tools.freecamMaxDistance=0).");
-        if (!mc.hasSingleplayerServer() && !s.freecamOnMultiplayer())
+        if (!mc.hasSingleplayerServer() && !Settings.FREECAM_ON_MULTIPLAYER.get())
             throw new ToolException("Freecam is off on multiplayer servers (config: tools.freecamOnMultiplayer=false). Plain screenshots still work.");
 
         Vec3 eye = player.getEyePosition();
-        boolean absolute = POSITION.stream().anyMatch(a::has), relative = OFFSET.stream().anyMatch(a::has);
-        if (absolute && relative) throw new ToolException("Give either x/y/z or dx/dy/dz, not both.");
-        Vec3 pos = absolute ? new Vec3(a.dbl("x", eye.x), a.dbl("y", eye.y), a.dbl("z", eye.z))
-                : eye.add(a.dbl("dx", 0), a.dbl("dy", 0), a.dbl("dz", 0));
+        Vec3 pos = switch (req.place()) {
+            case Absolute p -> p.pos();
+            case Offset o -> eye.add(o.delta());
+            case null -> eye;
+        };
         double distance = pos.distanceTo(eye);
-        if (distance > max) throw new ToolException(String.format(java.util.Locale.ROOT,
+        if (distance > max) throw new ToolException(String.format(Locale.ROOT,
                 "The camera would be %.1f blocks from the player; the limit is %d (config: tools.freecamMaxDistance).", distance, max));
         if (!mc.level.hasChunkAt(BlockPos.containing(pos))) throw new ToolException("That camera position is not in a loaded chunk.");
 
-        Vec3 target = null;
-        if (a.has("look_at_entity")) target = Ctx.entity(a.reqInt("look_at_entity")).getBoundingBox().getCenter();
-        else if (LOOK_AT.stream().anyMatch(a::has)) {
-            double x = a.dbl("look_at_x", pos.x), y = a.dbl("look_at_y", pos.y), z = a.dbl("look_at_z", pos.z);
-            boolean whole = x == Math.floor(x) && y == Math.floor(y) && z == Math.floor(z);
-            target = whole ? new Vec3(x + 0.5, y + 0.5, z + 0.5) : new Vec3(x, y, z);
-        }
         float yaw = player.getYRot(), pitch = player.getXRot();
-        if (target != null) {
-            Vec3 d = target.subtract(pos);
-            if (d.lengthSqr() > 1e-6) {
-                yaw = (float) Math.toDegrees(Mth.atan2(d.z, d.x)) - 90f;
-                pitch = (float) -Math.toDegrees(Mth.atan2(d.y, Math.sqrt(d.x * d.x + d.z * d.z)));
+        Vec3 target = switch (req.aim()) {
+            case Point p -> blockCenter(p.pos());
+            case AtEntity e -> Ctx.entity(e.id()).getBoundingBox().getCenter();
+            case Angles an -> {
+                if (an.yaw() != null) yaw = an.yaw();
+                if (an.pitch() != null) pitch = an.pitch();
+                yield null;
             }
-        } else {
-            yaw = (float) a.dbl("yaw", yaw);
-            pitch = (float) a.dbl("pitch", pitch);
+            case null -> null;
+        };
+        if (target != null && target.distanceToSqr(pos) > 1e-6) {
+            Vec3 d = target.subtract(pos);
+            yaw = (float) Math.toDegrees(Mth.atan2(d.z, d.x)) - 90f;
+            pitch = (float) -Math.toDegrees(Mth.atan2(d.y, Math.sqrt(d.x * d.x + d.z * d.z)));
         }
-        // Within the player's head the camera would see its inside: stay at the eyes and only turn instead.
-        boolean atEyes = distance < 0.75;
-        return new Capture.Pose(atEyes ? eye : pos, Mth.wrapDegrees(yaw), Mth.clamp(pitch, -90f, 90f), atEyes);
+        yaw = Mth.wrapDegrees(yaw);
+        pitch = Mth.clamp(pitch, -90f, 90f);
+
+        boolean atEyes = distance < AT_EYES;
+        if (atEyes) pos = eye;
+        JsonObject cam = new JsonObject();
+        cam.addProperty("x", Json.round(pos.x));
+        cam.addProperty("y", Json.round(pos.y));
+        cam.addProperty("z", Json.round(pos.z));
+        cam.addProperty("yaw", Json.round(yaw));
+        cam.addProperty("pitch", Json.round(pitch));
+        cam.addProperty("distance_from_player", Json.round(pos.distanceTo(eye)));
+        BlockPos bp = BlockPos.containing(pos);
+        cam.addProperty("inside_block", !mc.level.getBlockState(bp).getCollisionShape(mc.level, bp).isEmpty());
+        if (atEyes && distance > 0) cam.addProperty("note", "Within " + AT_EYES + " blocks of the eyes: the camera stays at the eyes and only turns.");
+        meta.add("camera", cam);
+        return atEyes ? new Capture.Turn(yaw, pitch) : new Capture.Move(pos, yaw, pitch);
     }
 
-    private static JsonObject describe(Minecraft mc, Capture.Pose pose) {
-        JsonObject o = new JsonObject();
-        o.addProperty("x", Json.round(pose.pos().x));
-        o.addProperty("y", Json.round(pose.pos().y));
-        o.addProperty("z", Json.round(pose.pos().z));
-        o.addProperty("yaw", Json.round(pose.yaw()));
-        o.addProperty("pitch", Json.round(pose.pitch()));
-        o.addProperty("distance_from_player", Json.round(pose.pos().distanceTo(Ctx.player().getEyePosition())));
-        BlockPos bp = BlockPos.containing(pose.pos());
-        o.addProperty("inside_block", !mc.level.getBlockState(bp).getCollisionShape(mc.level, bp).isEmpty());
-        return o;
-    }
-
-    private static String screenName(Minecraft mc) {
-        return Mc.screen(mc) == null ? "in-game" : Mc.screen(mc).getClass().getSimpleName();
+    /** Whole-number coordinates mean a block: aim at its center. */
+    private static Vec3 blockCenter(Vec3 p) {
+        boolean whole = p.x == Math.floor(p.x) && p.y == Math.floor(p.y) && p.z == Math.floor(p.z);
+        return whole ? p.add(0.5, 0.5, 0.5) : p;
     }
 
     private static ToolResult image(NativeImage img, int maxW, JsonObject meta) throws Exception {

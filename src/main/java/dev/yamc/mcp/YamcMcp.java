@@ -49,17 +49,13 @@ public final class YamcMcp {
         return platform;
     }
 
-    public static Settings settings() {
-        return platform.settings();
-    }
-
     /** Starts the MCP server; called on the client thread once the game is set up. */
     public static void startServer() {
         try {
-            token = settings().requireToken() ? loadOrCreateToken() : null;
+            token = Settings.REQUIRE_TOKEN.get() ? loadOrCreateToken() : null;
             ToolRegistry registry = Tools.createRegistry();
             McpProtocol protocol = new McpProtocol(registry, Tools.INSTRUCTIONS);
-            server = new McpHttpServer(protocol, settings().bindAddress(), settings().port(), token);
+            server = new McpHttpServer(protocol, Settings.BIND_ADDRESS.get(), Settings.PORT.get(), token);
             server.start();
             LOGGER.info("YAMC MCP server listening on {} with {} tools", server.url(), registry.all().size());
             LOGGER.info("Connect Claude Code with: {}", connectCommand());
@@ -86,7 +82,7 @@ public final class YamcMcp {
     }
 
     public static String connectCommand() {
-        String url = server != null ? server.url() : "http://127.0.0.1:" + settings().port() + "/mcp";
+        String url = server != null ? server.url() : "http://127.0.0.1:" + Settings.PORT.get() + "/mcp";
         String cmd = "claude mcp add --transport http minecraft " + url;
         if (token != null) cmd += " --header \"Authorization: Bearer " + token + "\"";
         return cmd;
@@ -96,7 +92,7 @@ public final class YamcMcp {
     public static String channelCommand() {
         Path modJar = platform.modJar();
         String jar = modJar != null ? modJar.toAbsolutePath().toString() : "<path to yamcmcp.jar>";
-        String url = server != null ? server.url() : "http://127.0.0.1:" + settings().port() + "/mcp";
+        String url = server != null ? server.url() : "http://127.0.0.1:" + Settings.PORT.get() + "/mcp";
         String cmd = "claude mcp add minecraft -- java -cp \"" + jar + "\" dev.yamc.mcp.bridge.StdioBridge --url " + url;
         if (token != null) cmd += " --token-file \"" + platform.configDir().resolve("yamcmcp-token.txt").toAbsolutePath() + "\"";
         return cmd + "\n# then start Claude Code with: claude --dangerously-load-development-channels server:minecraft";
@@ -136,7 +132,7 @@ public final class YamcMcp {
             long ago = server.lastRequestMillis == 0 ? -1 : (System.currentTimeMillis() - server.lastRequestMillis) / 1000;
             msg(Component.literal("[YAMC MCP] " + server.url() + " | requests: " + server.requestCount.get()
                     + " | last client: " + server.lastClient + (ago >= 0 ? " (" + ago + "s ago)" : "")
-                    + " | actions " + (settings().enableActions() ? "on" : "off")
+                    + " | actions " + (Settings.ENABLE_ACTIONS.get() ? "on" : "off")
                     + " | push streams: " + SseHub.openStreams()).withStyle(ChatFormatting.AQUA));
         }
         return Command.SINGLE_SUCCESS;

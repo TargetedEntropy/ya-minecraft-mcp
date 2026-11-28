@@ -42,6 +42,7 @@ public final class YamcMcp {
     public static void init(Platform p, String version) {
         platform = p;
         VERSION = version;
+        dev.yamc.mcp.debug.LogCapture.install();
         PushNotifier.install();
     }
 

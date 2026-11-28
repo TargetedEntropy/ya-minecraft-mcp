@@ -416,4 +416,48 @@ public final class Mc {
         *///?} else
         return img.asByteArray();
     }
+
+    // ------------------------------------------------------------------ NBT
+
+    /** The keys of a compound tag (getAllKeys() was renamed keySet() in 1.21.5). */
+    public static java.util.Set<String> keys(net.minecraft.nbt.CompoundTag t) {
+        //? if >=1.21.5 {
+        /*return t.keySet();
+        *///?} else
+        return t.getAllKeys();
+    }
+
+    /** An entity's saved data, as written to disk, without its type id. */
+    public static net.minecraft.nbt.CompoundTag entityTag(net.minecraft.world.entity.Entity e) {
+        //? if >=1.21.6 {
+        /*var out = net.minecraft.world.level.storage.TagValueOutput.createWithContext(net.minecraft.util.ProblemReporter.DISCARDING, e.registryAccess());
+        e.saveWithoutId(out);
+        return out.buildResult();
+        *///?} else
+        return e.saveWithoutId(new net.minecraft.nbt.CompoundTag());
+    }
+
+    // ------------------------------------------------------------------ resources
+
+    /**
+     * Whether the block or item texture atlas holds this sprite. Some sprites are made at load time rather than read
+     * from a file (armor trim palettes), so a missing file alone does not mean a missing texture.
+     */
+    public static boolean atlasHasSprite(Minecraft mc, ResourceLocation texture) {
+        //? if >=1.21.9 {
+        /*for (String atlas : java.util.List.of("blocks", "items")) {
+            try {
+                if (hasSprite(mc.getAtlasManager().getAtlasOrThrow(ResourceLocation.withDefaultNamespace(atlas)), texture)) return true;
+            } catch (RuntimeException e) {
+                // no such atlas in this version
+            }
+        }
+        return false;
+        *///?} else
+        return hasSprite(mc.getModelManager().getAtlas(net.minecraft.client.renderer.texture.TextureAtlas.LOCATION_BLOCKS), texture);
+    }
+
+    private static boolean hasSprite(net.minecraft.client.renderer.texture.TextureAtlas atlas, ResourceLocation texture) {
+        return !atlas.getSprite(texture).contents().name().equals(net.minecraft.client.renderer.texture.MissingTextureAtlasSprite.getLocation());
+    }
 }

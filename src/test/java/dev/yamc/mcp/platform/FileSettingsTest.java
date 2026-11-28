@@ -19,9 +19,9 @@ class FileSettingsTest {
         try (var r = Files.newBufferedReader(file)) {
             written.load(r);
         }
-        // The keys released in 0.2.0: existing files must keep working.
+        // The keys released so far: existing files must keep working.
         assertEquals(java.util.Set.of("port", "bindAddress", "requireToken", "clientThreadTimeoutMs", "enableActions",
-                "enableIntegratedServerTools", "enableLocate", "freecamMaxDistance", "freecamOnMultiplayer", "eventBufferSize",
+                "enableIntegratedServerTools", "enableLocate", "freecamMaxDistance", "freecamOnMultiplayer", "eventBufferSize", "logBufferSize",
                 "push.enabled", "push.eventTypes"), written.stringPropertyNames());
         FileSettings read = FileSettings.load(file);
         for (Setting<?> s : Settings.ALL) assertEquals(s.def(), read.get(s), s.key());

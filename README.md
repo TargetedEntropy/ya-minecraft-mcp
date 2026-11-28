@@ -73,7 +73,7 @@ and movement or mining tools can't run.
 
 Every response reports a `source` (`static`, `synced`, `integrated_server`, `client`).
 
-## Tools (53)
+## Tools (58)
 
 **Player:** `player_status`, `player_inventory`
 **World:** `world_info`, `look_target`, `block_at`, `blocks_at`, `scan_area`, `find_blocks`, `nearby_entities`, `entity_info`, `players_online`, `open_container`, `hud`
@@ -86,6 +86,15 @@ eyes) or direction (`look_at_x/y/z`, `look_at_entity`, `yaw/pitch`) it becomes a
 of the player, without moving the player or sending anything to the server. Up to 32 blocks from the player, loaded chunks
 only, and singleplayer/LAN host only unless enabled for multiplayer (see Config).
 **Fishing:** `fishing_status`, `fish` (casts, waits for a bite and reels in; bites and catches are also `fish_bite` / `fish_caught` events)
+**Mod development** (for a mod you are building, running in the same client, e.g. `runClient`):
+- `logs`: the game log (every mod, INFO and above) with stack traces, filtered by level, logger and text. ERRORs are also `log_error` events.
+- `exceptions`: every distinct exception since startup, grouped by where it was thrown, with counts; plus crash reports.
+- `reload`: reload resource packs (F3+T) and/or data packs (`/reload`), wait, and return what was logged as WARN/ERROR meanwhile.
+- `asset_audit`: a namespace's blocks, items and entities checked for missing translations, blockstates, item models, models,
+  textures and (singleplayer) loot tables.
+- `block_inspect`: a block on the client and on the integrated server side by side, with the block entity NBT keys that differ
+  (data that is not synced), scheduled ticks and redstone power.
+
 **Actions:** `send_chat`, `run_command`, `look_at`, `select_slot`, `interact`, `mine_block`, `move`, `container_click`, `open_inventory`, `close_screen`, `highlight`, `clear_highlights`, `notify_player`
 
 List tools share the same filters (`namespace`, `query`, which matches the id or the display name, and `regex`) and paging (`page_size`, `cursor` → `next_cursor`).
@@ -97,7 +106,7 @@ NeoForge: `config/yamcmcp-client.toml`. Fabric: `config/yamcmcp.properties` (sam
 
 - `server.port` (25599), `server.bindAddress` (127.0.0.1), `server.requireToken` (true), `server.clientThreadTimeoutMs`
 - `tools.enableActions` (true): set false for a read-only mod. Action tools are then hidden.
-- `tools.enableIntegratedServerTools` (true), `tools.enableLocate` (true), `tools.eventBufferSize`
+- `tools.enableIntegratedServerTools` (true), `tools.enableLocate` (true), `tools.eventBufferSize`, `tools.logBufferSize` (5000 log lines)
 - `tools.freecamMaxDistance` (32): how far the screenshot camera may go from the player; 0 turns freecam off.
 - `tools.freecamOnMultiplayer` (false): allow freecam on multiplayer servers. Many servers count freecam as cheating, since it
   can see through walls.

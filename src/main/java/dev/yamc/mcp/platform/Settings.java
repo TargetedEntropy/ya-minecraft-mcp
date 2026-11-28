@@ -34,6 +34,8 @@ public final class Settings {
             "Allow the screenshot freecam on multiplayer servers (always allowed in singleplayer/LAN host). Many servers treat freecam as cheating.");
     public static final Setting.Int EVENT_BUFFER_SIZE = new Setting.Int("tools", "eventBufferSize", 1000, 50, 20000,
             "Number of recent game events kept for events_since / wait_for_event.");
+    public static final Setting.Int LOG_BUFFER_SIZE = new Setting.Int("tools", "logBufferSize", 5000, 100, 100000,
+            "Number of recent log lines (INFO and above) kept for the logs tool.");
 
     public static final Setting.Bool PUSH_ENABLED = new Setting.Bool("push", "enabled", true,
             "Push game events to connected MCP clients as notifications (no polling needed).");
@@ -44,5 +46,5 @@ public final class Settings {
     /** In config-file order, grouped by section. */
     public static final List<Setting<?>> ALL = List.of(PORT, BIND_ADDRESS, REQUIRE_TOKEN, CLIENT_THREAD_TIMEOUT_MS,
             ENABLE_ACTIONS, ENABLE_INTEGRATED_SERVER_TOOLS, ENABLE_LOCATE, FREECAM_MAX_DISTANCE, FREECAM_ON_MULTIPLAYER,
-            EVENT_BUFFER_SIZE, PUSH_ENABLED, PUSH_EVENT_TYPES);
+            EVENT_BUFFER_SIZE, LOG_BUFFER_SIZE, PUSH_ENABLED, PUSH_EVENT_TYPES);
 }

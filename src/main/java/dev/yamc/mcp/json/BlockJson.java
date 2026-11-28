@@ -3,16 +3,17 @@ package dev.yamc.mcp.json;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import dev.yamc.mcp.util.Json;
-import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.Property;
 import net.minecraft.world.level.material.FluidState;
 
-/** JSON for block states and blocks in the client level. */
+/** JSON for block states and blocks in a level (the client's, or the integrated server's). */
 public final class BlockJson {
     private BlockJson() {}
 
@@ -40,7 +41,7 @@ public final class BlockJson {
     }
 
     /** The block at a position: state, fluid, light, hardness, block entity (with NBT if asked). */
-    public static JsonObject at(ClientLevel l, BlockPos pos, boolean nbt) {
+    public static JsonObject at(Level l, BlockPos pos, boolean nbt) {
         JsonObject o = new JsonObject();
         o.add("pos", Json.pos(pos));
         if (!l.isLoaded(pos)) {
@@ -70,7 +71,7 @@ public final class BlockJson {
             b.addProperty("type", String.valueOf(BuiltInRegistries.BLOCK_ENTITY_TYPE.getKey(be.getType())));
             if (nbt) {
                 try {
-                    b.addProperty("nbt", be.saveWithoutMetadata(l.registryAccess()).toString());
+                    b.addProperty("nbt", tag(be).toString());
                 } catch (Exception e) {
                     b.addProperty("nbt_error", e.toString());
                 }
@@ -78,5 +79,10 @@ public final class BlockJson {
             o.add("block_entity", b);
         }
         return o;
+    }
+
+    /** A block entity's saved data (what the side holding it knows: the client usually has only what is synced). */
+    public static CompoundTag tag(BlockEntity be) {
+        return be.saveWithoutMetadata(be.getLevel().registryAccess());
     }
 }

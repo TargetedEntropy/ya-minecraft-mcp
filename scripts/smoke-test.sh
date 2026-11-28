@@ -109,6 +109,12 @@ check clear_highlights '{}'
 check look_at '{"yaw":0,"pitch":0}'
 check select_slot '{"slot":1}'
 check export_data '{"what":["tags"]}' directory
+# Mod development tools
+check logs '{"logger":"yamcmcp","limit":20}' 'YAMC MCP server listening'
+check exceptions '{}' distinct
+check asset_audit '{"namespace":"minecraft","limit":5}' entries_with_problems
+check block_inspect '{}' in_sync
+check reload '{"what":"all"}' duration_ms
 
 echo "$NODE: $FAIL failed"
 [ "$FAIL" = 0 ]

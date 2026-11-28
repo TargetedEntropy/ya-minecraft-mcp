@@ -134,8 +134,15 @@ public final class Capture {
     /** Only touched on the client thread. */
     private static boolean busy;
     private static @Nullable Turn turning;
+    /** World frames rendered so far (counted from the world render hook). */
+    private static long frames;
 
     private Capture() {}
+
+    /** Called once per rendered world frame. */
+    static void frameRendered() {
+        frames++;
+    }
 
     /** The camera turn the loader should apply this frame, or null. Client thread only. */
     public static @Nullable Turn turning() {
@@ -166,6 +173,10 @@ public final class Capture {
         int settleTicks = changes.stream().mapToInt(Change::settleTicks).max().orElse(0);
         boolean revealsWorld = changes.stream().anyMatch(Change::revealsWorld);
         long deadline = System.currentTimeMillis() + maxWaitMs;
+        // At a low frame rate several ticks pass per frame: also wait for frames drawn after the changes (in a world,
+        // where frames are counted), or the capture could read a frame from before them.
+        long frame0 = frames;
+        boolean countFrames = !changes.isEmpty() && mc.level != null;
 
         return new Ticker.Job<>() {
             final CompletableFuture<NativeImage> image = new CompletableFuture<>();
@@ -178,7 +189,7 @@ public final class Capture {
                 if (requested) return null; // newer versions deliver the image after a GPU readback
                 // Newly visible chunk sections are queued over a frame or two: wait until the queue stays empty for two ticks.
                 builtTicks = !revealsWorld || mc.levelRenderer.hasRenderedAllSections() ? builtTicks + 1 : 0;
-                complete = ++ticks >= settleTicks && (!revealsWorld || builtTicks >= 2);
+                complete = ++ticks >= settleTicks && (!revealsWorld || builtTicks >= 2) && (!countFrames || frames - frame0 >= 2);
                 if (complete || System.currentTimeMillis() > deadline) {
                     requested = true;
                     Mc.screenshot(mc, image::complete);

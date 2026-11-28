@@ -4,6 +4,7 @@ import com.google.gson.JsonObject;
 import com.mojang.blaze3d.platform.NativeImage;
 import dev.yamc.mcp.client.Capture;
 import dev.yamc.mcp.client.Ticker;
+import dev.yamc.mcp.debug.ImageDiff;
 import dev.yamc.mcp.mcp.Args;
 import dev.yamc.mcp.mcp.Schema;
 import dev.yamc.mcp.mcp.Tool;
@@ -41,7 +42,9 @@ final class ScreenshotTools {
                         + "top-down view, or a spot behind a wall. Without a direction the camera looks the way the player does. "
                         + "Limited to tools.freecamMaxDistance blocks from the player (default 32) and to loaded chunks; off on multiplayer "
                         + "servers unless tools.freecamOnMultiplayer is set. A camera inside solid blocks sees through the world. "
-                        + "Freecam always hides the HUD and hand; hide_hud does that for a normal screenshot.")
+                        + "Freecam always hides the HUD and hand; hide_hud does that for a normal screenshot. "
+                        + "Render regression checks: save_baseline stores the image under a name; compare_baseline compares a new "
+                        + "one (same max_width and window size) and returns how many pixels differ plus a diff image (changes in red).")
                 .schema(Schema.of().integer("max_width", "Downscale to at most this width (default 1280, max 3840).")
                         .bool("hide_hud", "Hide the HUD and hand, as with F1 (default false).")
                         .integer("fov", "Field of view in degrees, 30-110 (default: the player's setting).")
@@ -54,7 +57,10 @@ final class ScreenshotTools {
                         .number("look_at_z", "Point the camera at this Z. Whole numbers aim at the block center.")
                         .integer("look_at_entity", "Point the camera at this entity (its center).")
                         .number("yaw", "Camera yaw (0=south, 90=west, 180=north, -90=east).").number("pitch", "Camera pitch (-90=up, 90=down).")
-                        .integer("max_wait_ms", "Freecam: longest to wait for the view's chunks to finish building (default 3000, max 10000)."))
+                        .integer("max_wait_ms", "Freecam: longest to wait for the view's chunks to finish building (default 3000, max 10000).")
+                        .str("save_baseline", "Also save this image as a baseline with this name (letters, digits, _ - .).")
+                        .str("compare_baseline", "Compare this image with the baseline of this name.")
+                        .integer("diff_threshold", "For compare_baseline: per-channel difference (0-255) a pixel may have and still match (default 16)."))
                 .anyThread()
                 .handler(ScreenshotTools::screenshot));
     }
@@ -76,7 +82,8 @@ final class ScreenshotTools {
     private record Angles(@Nullable Float yaw, @Nullable Float pitch) implements Aim {}
 
     /** A screenshot call's arguments. A freecam request has a place, an aim, or both. */
-    private record Request(int maxWidth, long maxWaitMs, @Nullable Integer fov, boolean hideHud, @Nullable Place place, @Nullable Aim aim) {
+    private record Request(int maxWidth, long maxWaitMs, @Nullable Integer fov, boolean hideHud, @Nullable Place place, @Nullable Aim aim,
+                           @Nullable String saveBaseline, @Nullable String compareBaseline, int diffThreshold) {
         boolean freecam() {
             return place != null || aim != null;
         }
@@ -97,7 +104,8 @@ final class ScreenshotTools {
 
             return new Request(a.integer("max_width", 1280, 64, 3840), a.integer("max_wait_ms", 3000, 0, 10000),
                     a.has("fov") ? a.integer("fov", 70, 30, 110) : null, a.bool("hide_hud", false),
-                    place, aims.isEmpty() ? null : aims.getFirst());
+                    place, aims.isEmpty() ? null : aims.getFirst(), a.str("save_baseline", null), a.str("compare_baseline", null),
+                    a.integer("diff_threshold", 16, 0, 255));
         }
 
         /** All three coordinates, none (null), or an error for some. */
@@ -123,7 +131,7 @@ final class ScreenshotTools {
         }, req.maxWaitMs() + 15_000);
         if (req.freecam()) meta.addProperty("complete", shot.complete());
         try (NativeImage img = shot.image()) {
-            return image(img, req.maxWidth(), meta);
+            return image(img, req, meta);
         }
     }
 
@@ -188,7 +196,8 @@ final class ScreenshotTools {
         return whole ? p.add(0.5, 0.5, 0.5) : p;
     }
 
-    private static ToolResult image(NativeImage img, int maxW, JsonObject meta) throws Exception {
+    private static ToolResult image(NativeImage img, Request req, JsonObject meta) throws Exception {
+        int maxW = req.maxWidth();
         NativeImage out = img;
         if (img.getWidth() > maxW) {
             out = new NativeImage(maxW, Math.max(1, img.getHeight() * maxW / img.getWidth()), false);
@@ -198,7 +207,23 @@ final class ScreenshotTools {
             byte[] png = Mc.png(out);
             meta.addProperty("width", out.getWidth());
             meta.addProperty("height", out.getHeight());
-            return new ToolResult().image(Base64.getEncoder().encodeToString(png), "image/png").text(meta.toString());
+            ToolResult r = new ToolResult().image(Base64.getEncoder().encodeToString(png), "image/png");
+            if (req.compareBaseline() != null) {
+                ImageDiff.Result d = ImageDiff.compare(out, req.compareBaseline(), req.diffThreshold());
+                JsonObject c = new JsonObject();
+                c.addProperty("baseline", req.compareBaseline());
+                c.addProperty("matches", d.differing() == 0);
+                c.addProperty("differing_pixels", d.differing());
+                c.addProperty("differing_percent", Json.round(d.ratio() * 100));
+                c.addProperty("max_channel_delta", d.maxDelta());
+                if (d.diffPng() != null) {
+                    c.addProperty("diff_image", "second image: changed pixels in red over a grey copy of this screenshot");
+                    r.image(Base64.getEncoder().encodeToString(d.diffPng()), "image/png");
+                }
+                meta.add("comparison", c);
+            }
+            if (req.saveBaseline() != null) meta.addProperty("baseline_saved", ImageDiff.save(req.saveBaseline(), png).getFileName().toString());
+            return r.text(meta.toString());
         } finally {
             if (out != img) out.close();
         }

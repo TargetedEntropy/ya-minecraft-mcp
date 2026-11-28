@@ -403,6 +403,26 @@ public final class Mc {
         net.minecraft.client.gui.components.toasts.SystemToast.addOrUpdate(mc.getToasts(), net.minecraft.client.gui.components.toasts.SystemToast.SystemToastId.PERIODIC_NOTIFICATION, title, text);
     }
 
+    /** A pixel as 0xAARRGGBB (before 1.21.2 images store ABGR). */
+    public static int argb(NativeImage img, int x, int y) {
+        //? if >=1.21.2 {
+        /*return img.getPixel(x, y);
+        *///?} else
+        return abgrToArgb(img.getPixelRGBA(x, y));
+    }
+
+    public static void setArgb(NativeImage img, int x, int y, int argb) {
+        //? if >=1.21.2 {
+        /*img.setPixel(x, y, argb);
+        *///?} else
+        img.setPixelRGBA(x, y, abgrToArgb(argb));
+    }
+
+    /** Swaps the red and blue channels (the conversion is its own inverse). */
+    private static int abgrToArgb(int c) {
+        return (c & 0xFF00FF00) | ((c & 0xFF) << 16) | ((c >> 16) & 0xFF);
+    }
+
     /** PNG bytes of an image. */
     public static byte[] png(NativeImage img) throws java.io.IOException {
         //? if >=1.21.2 {
@@ -415,6 +435,29 @@ public final class Mc {
         }
         *///?} else
         return img.asByteArray();
+    }
+
+    // ------------------------------------------------------------------ input
+
+    /** A key binding's category as shown in the controls screen (a translation key before 1.21.9, a record since). */
+    public static String keyCategory(net.minecraft.client.KeyMapping k) {
+        //? if >=1.21.9 {
+        /*return k.getCategory().label().getString();
+        *///?} else
+        return Component.translatable(k.getCategory()).getString();
+    }
+
+    /** A left click (press and release) at GUI coordinates, dispatched through the screen; whether the press was handled. */
+    public static boolean click(net.minecraft.client.gui.screens.Screen s, double x, double y) {
+        //? if >=1.21.9 {
+        /*var e = new net.minecraft.client.input.MouseButtonEvent(x, y, new net.minecraft.client.input.MouseButtonInfo(0, 0));
+        boolean handled = s.mouseClicked(e, false);
+        s.mouseReleased(e);
+        *///?} else {
+        boolean handled = s.mouseClicked(x, y, 0);
+        s.mouseReleased(x, y, 0);
+        //?}
+        return handled;
     }
 
     // ------------------------------------------------------------------ commands

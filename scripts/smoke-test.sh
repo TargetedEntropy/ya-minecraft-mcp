@@ -134,6 +134,18 @@ sleep 1
 check packet_log '{"action":"status"}' by_type
 check packet_log '{"action":"stop"}' active
 check mod_config '{"mod_id":"yamcmcp"}' configs
+check keybinds '{"query":"jump"}' key.jump
+check key_press '{"name":"key.jump","ticks":2}' pressed
+check perf '{}' mspt_average
+check mixins '{}' configs
+check mixins '{"target":"net.minecraft.client.Minecraft"}' applied
+check open_inventory '{}'
+sleep 1
+check screen_widgets '{}' widgets
+check widget_click '{"index":"0"}' handled
+check close_screen '{}'
+check screenshot '{"max_width":320,"hide_hud":true,"save_baseline":"smoke"}' baseline_saved
+check screenshot '{"max_width":320,"hide_hud":true,"compare_baseline":"smoke"}' differing_pixels
 
 echo "$NODE: $FAIL failed"
 [ "$FAIL" = 0 ]

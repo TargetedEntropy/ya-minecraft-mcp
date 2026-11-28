@@ -73,7 +73,7 @@ and movement or mining tools can't run.
 
 Every response reports a `source` (`static`, `synced`, `integrated_server`, `client`).
 
-## Tools (64)
+## Tools (71)
 
 **Player:** `player_status`, `player_inventory`
 **World:** `world_info`, `look_target`, `block_at`, `blocks_at`, `scan_area`, `find_blocks`, `nearby_entities`, `entity_info`, `players_online`, `open_container`, `hud`
@@ -103,6 +103,12 @@ only, and singleplayer/LAN host only unless enabled for multiplayer (see Config)
 - `packet_log`: count and list network packets while recording; mod channels show as `custom_payload <id>`.
 - `mod_config`: a mod's NeoForge config values (with defaults, ranges, comments) and setting one; on Fabric, its config files
   (read-only). Values and files that look like credentials are withheld.
+- `keybinds` / `key_press`: every key binding (mods' too) and pressing one by name for N ticks, bound or not.
+- `screen_widgets` / `widget_click`: the open screen's widget tree (class, bounds, label, state, text fields) and clicking a
+  widget or filling a text field by index.
+- `perf`: FPS, memory, server tick time (average and worst), loaded chunks, entities and ticking block entities by type and mod.
+- `mixins`: loaded mixin configs, and the mixins applied to a given class (to find out why one did not apply).
+- `screenshot` `save_baseline` / `compare_baseline`: render regression checks with a differing-pixel count and a diff image.
 
 **Actions:** `send_chat`, `run_command`, `look_at`, `select_slot`, `interact`, `mine_block`, `move`, `container_click`, `open_inventory`, `close_screen`, `highlight`, `clear_highlights`, `notify_player`
 

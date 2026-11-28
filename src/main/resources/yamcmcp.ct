@@ -35,3 +35,7 @@ accessible field net/minecraft/network/Connection channel Lio/netty/channel/Chan
 # Mob AI goals for entity_inspect (NeoForge already makes these public)
 accessible field net/minecraft/world/entity/Mob goalSelector Lnet/minecraft/world/entity/ai/goal/GoalSelector;
 accessible field net/minecraft/world/entity/Mob targetSelector Lnet/minecraft/world/entity/ai/goal/GoalSelector;
+# Pressing a key binding for key_press (counts as one click for consumeClick())
+accessible field net/minecraft/client/KeyMapping clickCount I
+# Ticking block entities per level, for perf
+accessible field net/minecraft/world/level/Level blockEntityTickers Ljava/util/List;

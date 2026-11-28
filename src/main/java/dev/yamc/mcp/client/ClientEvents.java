@@ -63,6 +63,7 @@ public final class ClientEvents {
 
     /** World rendering after block entities, in camera-relative world space. */
     public static void renderLevel(@Nullable PoseStack pose, Camera camera) {
+        Capture.frameRendered();
         Markers.render(pose, camera);
     }
 }

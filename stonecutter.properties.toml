@@ -5,7 +5,7 @@
 mod.id = "yamcmcp"
 mod.name = "YAMC MCP"
 mod.group = "dev.yamc.mcp"
-mod.version = "0.3.0"
+mod.version = "0.4.0"
 mod.license = "MIT"
 mod.curseforge_project_id = "1831975"
 mod.modrinth_project = "yamc-mcp"

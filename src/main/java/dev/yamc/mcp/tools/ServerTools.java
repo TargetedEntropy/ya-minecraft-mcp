@@ -163,16 +163,13 @@ final class ServerTools {
      * {@code prepare} parses the arguments against the server registries, on the server thread.
      */
     private static ToolResult locate(Args a, String foundKey, java.util.function.Function<ServerLevel, Search> prepare) throws Exception {
-        MinecraftServer s = ClientThread.call(IntegratedServer::require);
         record Origin(ResourceKey<Level> dim, BlockPos pos) {}
         Origin org = ClientThread.call(() -> {
             var p = Ctx.player();
             BlockPos b = p.blockPosition();
             return new Origin(p.level().dimension(), new BlockPos(a.integer("x", b.getX()), b.getY(), a.integer("z", b.getZ())));
         });
-        return ToolResult.json(ClientThread.callServer(s, () -> {
-            ServerLevel lvl = s.getLevel(org.dim());
-            if (lvl == null) throw new ToolException("Dimension not loaded on server.");
+        return ToolResult.json(IntegratedServer.inLevel(org.dim(), 90_000, lvl -> {
             Search search = prepare.apply(lvl);
             long t0 = System.currentTimeMillis();
             var found = search.find(lvl, org.pos());
@@ -188,7 +185,7 @@ final class ServerTools {
             }
             o.addProperty("search_ms", System.currentTimeMillis() - t0);
             return o;
-        }, 90_000));
+        }));
     }
 
     static ToolResult locateStructure(Args a) throws Exception {

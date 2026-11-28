@@ -7,7 +7,6 @@ import dev.yamc.mcp.mcp.Schema;
 import dev.yamc.mcp.mcp.ToolException;
 import dev.yamc.mcp.mcp.ToolRegistry;
 import dev.yamc.mcp.mcp.ToolResult;
-import dev.yamc.mcp.util.ClientThread;
 import dev.yamc.mcp.util.IntegratedServer;
 import dev.yamc.mcp.util.Json;
 import net.minecraft.server.MinecraftServer;
@@ -16,14 +15,17 @@ import net.minecraft.server.level.ServerPlayer;
 
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.Callable;
 
 /** Mod development: running game tests, and freezing / stepping / sprinting the game clock. Singleplayer only. */
 final class TestTools {
     private TestTools() {}
 
     private static final long POLL_MS = 100;
-    private static final List<String> RUN_MODES = List.of("runall", "run", "runclosest", "runthese", "runthat", "runfailed");
+
+    /** gametest_run modes: each but LIST is the /test subcommand of the same name. */
+    private enum Mode { RUNALL, RUN, RUNCLOSEST, RUNTHESE, RUNTHAT, RUNFAILED, LIST }
+
+    private enum TickAction { STATUS, FREEZE, UNFREEZE, STEP, SPRINT, RATE }
 
     static void register(ToolRegistry r) {
         r.add(Gates.action("gametest_run").title("Run game tests")
@@ -31,8 +33,7 @@ final class TestTools {
                         + "its error message and position. mode=list lists the tests the game knows. Tests are built in the world "
                         + "near the player. On NeoForge before 1.21.5 and on Fabric the test command may need the game test "
                         + "framework enabled (dev environments usually have it).")
-                .schema(Schema.of().enumStr("mode", "What to run (default runall).", false,
-                                "runall", "run", "runclosest", "runthese", "runthat", "runfailed", "list")
+                .schema(Schema.of().choice("mode", "What to run (default runall).", Mode.class)
                         .str("tests", "For mode=run: the test name or selector, e.g. mymod:my_test (wildcards allowed from 1.21.5).")
                         .integer("timeout_seconds", "Longest to wait for the tests to finish (default 120, max 540)."))
                 .gate(Gates.INTEGRATED_SERVER)
@@ -43,7 +44,7 @@ final class TestTools {
                 .desc("Singleplayer only. The game clock (like /tick): status, freeze, unfreeze, step N ticks while frozen (waits "
                         + "until they ran), sprint N ticks as fast as possible (waits), or set the tick rate. Use freeze + step to "
                         + "advance a machine or mob exactly, then inspect it.")
-                .schema(Schema.of().enumStr("action", "What to do (default status).", false, "status", "freeze", "unfreeze", "step", "sprint", "rate")
+                .schema(Schema.of().choice("action", "What to do (default status).", TickAction.class)
                         .integer("ticks", "For step (default 1, max 72000) and sprint (default 20, max 72000).")
                         .number("rate", "For rate: ticks per second (1-10000, normal 20)."))
                 .gate(Gates.INTEGRATED_SERVER)
@@ -54,22 +55,20 @@ final class TestTools {
     // ------------------------------------------------------------------ game tests
 
     private static ToolResult gametest(Args a) throws Exception {
-        MinecraftServer s = ClientThread.call(IntegratedServer::require);
-        String mode = a.str("mode", "runall").toLowerCase(Locale.ROOT);
-        if (mode.equals("list")) {
-            List<String> tests = server(s, () -> GameTests.available(s));
+        Mode mode = a.choice("mode", Mode.RUNALL);
+        if (mode == Mode.LIST) {
+            List<String> tests = IntegratedServer.call(GameTests::available);
             JsonObject o = new JsonObject();
             o.addProperty("count", tests.size());
             o.add("tests", Json.strings(tests));
             return ToolResult.json(o);
         }
-        if (!RUN_MODES.contains(mode)) throw new ToolException("Unknown mode '" + mode + "'.");
-        String command = "test " + mode;
-        if (mode.equals("run")) command += " " + a.reqStr("tests").trim();
+        String command = "test " + mode.name().toLowerCase(Locale.ROOT);
+        if (mode == Mode.RUN) command += " " + a.reqStr("tests").trim();
         else if (a.has("tests")) throw new ToolException("tests is only for mode=run.");
         long timeout = a.integer("timeout_seconds", 120, 1, 540) * 1000L;
         String cmd = command;
-        GameTests.Started started = server(s, () -> GameTests.start(s, player(s).createCommandSourceStack(), cmd));
+        GameTests.Started started = IntegratedServer.call(s -> GameTests.start(s, player(s).createCommandSourceStack(), cmd));
         JsonObject o = new JsonObject();
         o.addProperty("command", "/" + command);
         o.add("output", Json.strings(started.output()));
@@ -80,10 +79,11 @@ final class TestTools {
         }
         long deadline = System.currentTimeMillis() + timeout;
         boolean finished;
-        while (!(finished = server(s, () -> GameTests.done(started.runner()))) && System.currentTimeMillis() < deadline) Thread.sleep(POLL_MS);
+        while (!(finished = IntegratedServer.call(s -> GameTests.done(started.runner()))) && System.currentTimeMillis() < deadline)
+            Thread.sleep(POLL_MS);
         o.addProperty("finished", finished);
         if (!finished) o.addProperty("note", "Timed out: these are the results so far. The game must not be paused for tests to run.");
-        o.add("results", server(s, () -> GameTests.results(started.runner())));
+        o.add("results", IntegratedServer.call(s -> GameTests.results(started.runner())));
         return ToolResult.json(o);
     }
 
@@ -96,49 +96,52 @@ final class TestTools {
     // ------------------------------------------------------------------ tick control
 
     private static ToolResult tick(Args a) throws Exception {
-        MinecraftServer s = ClientThread.call(IntegratedServer::require);
-        String action = a.str("action", "status").toLowerCase(Locale.ROOT);
         JsonObject o = new JsonObject();
-        switch (action) {
-            case "status" -> {}
-            case "freeze", "unfreeze" -> server(s, () -> {
-                s.tickRateManager().setFrozen(action.equals("freeze"));
-                return null;
-            });
-            case "rate" -> {
+        switch (a.choice("action", TickAction.STATUS)) {
+            case STATUS -> {}
+            case FREEZE -> IntegratedServer.call(s -> setFrozen(s, true));
+            case UNFREEZE -> IntegratedServer.call(s -> setFrozen(s, false));
+            case RATE -> {
                 if (!a.has("rate")) throw new ToolException("Give rate (ticks per second).");
                 float rate = (float) Math.max(1, Math.min(10000, a.dbl("rate", 20)));
-                server(s, () -> {
+                IntegratedServer.call(s -> {
                     s.tickRateManager().setTickRate(rate);
-                    return null;
+                    return true;
                 });
             }
-            case "step" -> {
+            case STEP -> {
                 int n = a.integer("ticks", 1, 1, 72000);
-                if (!server(s, () -> s.tickRateManager().stepGameIfPaused(n)))
+                if (!IntegratedServer.call(s -> s.tickRateManager().stepGameIfPaused(n)))
                     throw new ToolException("Can only step while frozen: use action=freeze first.");
                 o.addProperty("stepped", n);
-                o.addProperty("finished", waitWhile(s, () -> s.tickRateManager().isSteppingForward(), n));
+                o.addProperty("finished", waitWhile(s -> s.tickRateManager().isSteppingForward(), n));
             }
-            case "sprint" -> {
+            case SPRINT -> {
                 int n = a.integer("ticks", 20, 1, 72000);
-                long t0 = System.currentTimeMillis(), tick0 = s.getTickCount();
-                server(s, () -> s.tickRateManager().requestGameToSprint(n));
-                o.addProperty("finished", waitWhile(s, () -> s.tickRateManager().isSprinting(), n));
-                o.addProperty("ticks_run", s.getTickCount() - tick0);
+                long t0 = System.currentTimeMillis();
+                int tick0 = IntegratedServer.call(s -> {
+                    s.tickRateManager().requestGameToSprint(n);
+                    return s.getTickCount();
+                });
+                o.addProperty("finished", waitWhile(s -> s.tickRateManager().isSprinting(), n));
+                o.addProperty("ticks_run", IntegratedServer.call(MinecraftServer::getTickCount) - tick0);
                 o.addProperty("duration_ms", System.currentTimeMillis() - t0);
             }
-            default -> throw new ToolException("Unknown action '" + action + "'.");
         }
-        o.add("status", server(s, () -> status(s)));
+        o.add("status", IntegratedServer.call(TestTools::status));
         return ToolResult.json(o);
     }
 
+    private static boolean setFrozen(MinecraftServer s, boolean frozen) {
+        s.tickRateManager().setFrozen(frozen);
+        return frozen;
+    }
+
     /** Waits until the condition is false (or about ten seconds more than {@code ticks} at 20 per second); returns whether it ended. */
-    private static boolean waitWhile(MinecraftServer s, Callable<Boolean> cond, int ticks) throws Exception {
+    private static boolean waitWhile(IntegratedServer.Task<Boolean> cond, int ticks) throws Exception {
         long deadline = System.currentTimeMillis() + ticks * 50L + 10_000;
         while (System.currentTimeMillis() < deadline) {
-            if (!server(s, cond)) return true;
+            if (!IntegratedServer.call(cond)) return true;
             Thread.sleep(POLL_MS);
         }
         return false;
@@ -155,9 +158,5 @@ final class TestTools {
         o.addProperty("mspt", Json.round(s.getAverageTickTimeNanos() / 1_000_000.0));
         o.addProperty("paused", s.isPaused());
         return o;
-    }
-
-    private static <T> T server(MinecraftServer s, Callable<T> task) throws Exception {
-        return ClientThread.callServer(s, task, 10_000);
     }
 }

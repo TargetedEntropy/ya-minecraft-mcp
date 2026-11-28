@@ -81,12 +81,12 @@ final class NeoForgePlatform implements Platform {
     }
 
     @Override
-    public com.google.gson.JsonArray modConfigs(String modId) {
+    public List<ConfigSpec> modConfigs(String modId) {
         return NeoForgeModConfigs.read(modId);
     }
 
     @Override
-    public com.google.gson.JsonElement setModConfig(String modId, String path, com.google.gson.JsonElement value) {
+    public Object setModConfig(String modId, String path, Object value) {
         return NeoForgeModConfigs.set(modId, path, value);
     }
 }

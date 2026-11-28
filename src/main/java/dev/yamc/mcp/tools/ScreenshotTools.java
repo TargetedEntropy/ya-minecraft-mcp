@@ -83,7 +83,7 @@ final class ScreenshotTools {
 
     /** A screenshot call's arguments. A freecam request has a place, an aim, or both. */
     private record Request(int maxWidth, long maxWaitMs, @Nullable Integer fov, boolean hideHud, @Nullable Place place, @Nullable Aim aim,
-                           @Nullable String saveBaseline, @Nullable String compareBaseline, int diffThreshold) {
+                           ImageDiff.@Nullable Baseline baseline) {
         boolean freecam() {
             return place != null || aim != null;
         }
@@ -104,8 +104,9 @@ final class ScreenshotTools {
 
             return new Request(a.integer("max_width", 1280, 64, 3840), a.integer("max_wait_ms", 3000, 0, 10000),
                     a.has("fov") ? a.integer("fov", 70, 30, 110) : null, a.bool("hide_hud", false),
-                    place, aims.isEmpty() ? null : aims.getFirst(), a.str("save_baseline", null), a.str("compare_baseline", null),
-                    a.integer("diff_threshold", 16, 0, 255));
+                    place, aims.isEmpty() ? null : aims.getFirst(), a.has("save_baseline") || a.has("compare_baseline")
+                    ? new ImageDiff.Baseline(a.str("save_baseline", null), a.str("compare_baseline", null), a.integer("diff_threshold", 16, 0, 255))
+                    : null);
         }
 
         /** All three coordinates, none (null), or an error for some. */
@@ -208,21 +209,7 @@ final class ScreenshotTools {
             meta.addProperty("width", out.getWidth());
             meta.addProperty("height", out.getHeight());
             ToolResult r = new ToolResult().image(Base64.getEncoder().encodeToString(png), "image/png");
-            if (req.compareBaseline() != null) {
-                ImageDiff.Result d = ImageDiff.compare(out, req.compareBaseline(), req.diffThreshold());
-                JsonObject c = new JsonObject();
-                c.addProperty("baseline", req.compareBaseline());
-                c.addProperty("matches", d.differing() == 0);
-                c.addProperty("differing_pixels", d.differing());
-                c.addProperty("differing_percent", Json.round(d.ratio() * 100));
-                c.addProperty("max_channel_delta", d.maxDelta());
-                if (d.diffPng() != null) {
-                    c.addProperty("diff_image", "second image: changed pixels in red over a grey copy of this screenshot");
-                    r.image(Base64.getEncoder().encodeToString(d.diffPng()), "image/png");
-                }
-                meta.add("comparison", c);
-            }
-            if (req.saveBaseline() != null) meta.addProperty("baseline_saved", ImageDiff.save(req.saveBaseline(), png).getFileName().toString());
+            if (req.baseline() != null) ImageDiff.apply(req.baseline(), out, png, r, meta);
             return r.text(meta.toString());
         } finally {
             if (out != img) out.close();

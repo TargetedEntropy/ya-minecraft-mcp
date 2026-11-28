@@ -6,7 +6,9 @@ import com.google.gson.JsonObject;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 
 /** Typed accessor over the JSON arguments of a tools/call request. */
 public final class Args {
@@ -28,6 +30,19 @@ public final class Args {
         if (!has(key)) return def;
         JsonElement e = obj.get(key);
         return e.isJsonPrimitive() ? e.getAsString() : e.toString();
+    }
+
+    /** The enum constant named (case-insensitively) by this argument, or {@code def} when it is absent. */
+    public <E extends Enum<E>> E choice(String key, E def) {
+        if (!has(key)) return def;
+        String v = str(key, "").trim();
+        for (E e : def.getDeclaringClass().getEnumConstants()) if (e.name().equalsIgnoreCase(v)) return e;
+        throw new ToolException("Unknown " + key + " '" + v + "': use one of " + String.join(", ", choices(def.getDeclaringClass())) + ".");
+    }
+
+    /** An enum's constants as argument values: their names in lower case. */
+    public static List<String> choices(Class<? extends Enum<?>> type) {
+        return Arrays.stream(type.getEnumConstants()).map(e -> e.name().toLowerCase(Locale.ROOT)).toList();
     }
 
     public String reqStr(String key) {

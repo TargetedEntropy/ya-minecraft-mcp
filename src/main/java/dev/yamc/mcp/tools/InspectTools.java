@@ -22,8 +22,6 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.Level;
@@ -32,6 +30,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Function;
@@ -42,8 +41,6 @@ import java.util.function.Function;
  */
 final class InspectTools {
     private InspectTools() {}
-
-    private static final long SERVER_TIMEOUT_MS = 10_000;
 
     static void register(ToolRegistry r) {
         r.add(Tool.builder("block_inspect").title("Inspect block (client vs server)")
@@ -78,8 +75,22 @@ final class InspectTools {
                 .handler(InspectTools::capabilitiesAt));
     }
 
-    /** One side's view: the JSON shown, and the saved data compared between the sides. */
-    record View(JsonObject json, @Nullable CompoundTag tag) {}
+    /**
+     * One side's view: the JSON shown, and what is compared between the sides: the saved data, and for a loaded block its
+     * state (null for entities and unloaded blocks).
+     */
+    record View(JsonObject json, @Nullable CompoundTag tag, @Nullable JsonObject state) {}
+
+    /** What is inspected, named as the holder of the compared NBT. */
+    private enum Kind {
+        BLOCK("block entity"), ENTITY("entity");
+
+        final String holder;
+
+        Kind(String holder) {
+            this.holder = holder;
+        }
+    }
 
     private record Where<T>(ResourceKey<Level> dimension, T target) {}
 
@@ -87,33 +98,28 @@ final class InspectTools {
      * Reads {@code read} on the client, then on the integrated server's copy of the same dimension, and puts both in one
      * object with their comparison. Without an integrated server the server side is left out with a note.
      */
-    private static <T> JsonObject bothSides(Where<T> where, Function<Level, View> read, String what) throws Exception {
+    private static <T> JsonObject bothSides(Where<T> where, Function<Level, View> read, Kind kind) throws Exception {
         View client = ClientThread.call(() -> read.apply(Ctx.level()));
-        MinecraftServer s = ClientThread.call(IntegratedServer::get);
+        Optional<View> server = IntegratedServer.callIfPresent(s -> read.apply(IntegratedServer.level(s, where.dimension())));
         JsonObject o = new JsonObject();
         o.add("client", client.json());
-        if (s == null) {
+        if (server.isEmpty()) {
             o.addProperty("server", "unavailable: the server side can only be read in singleplayer / LAN host");
             return o;
         }
-        View server = ClientThread.callServer(s, () -> {
-            ServerLevel l = s.getLevel(where.dimension());
-            if (l == null) throw new ToolException("The server has no level " + Mc.id(where.dimension()));
-            return read.apply(l);
-        }, SERVER_TIMEOUT_MS);
-        o.add("server", server.json());
-        o.add("sync", compare(client, server, what));
+        o.add("server", server.get().json());
+        o.add("sync", compare(client, server.get(), kind));
         return o;
     }
 
     private static ToolResult blockInspect(Args a) throws Exception {
         Where<BlockPos> w = ClientThread.call(() -> new Where<>(Ctx.level().dimension(), Ctx.posArg(a)));
-        return ToolResult.json(bothSides(w, l -> block(l, w.target()), "block entity"));
+        return ToolResult.json(bothSides(w, l -> block(l, w.target()), Kind.BLOCK));
     }
 
     private static View block(Level l, BlockPos pos) {
         JsonObject o = BlockJson.at(l, pos, false);
-        if (!l.isLoaded(pos)) return new View(o, null);
+        if (!l.isLoaded(pos)) return new View(o, null, null);
         BlockState state = l.getBlockState(pos);
         BlockEntity be = l.getBlockEntity(pos);
         CompoundTag tag = null;
@@ -138,14 +144,14 @@ final class InspectTools {
                 o.addProperty("scheduled_fluid_tick", l.getFluidTicks().hasScheduledTick(pos, state.getFluidState().getType()));
             o.addProperty("redstone_power_received", l.getBestNeighborSignal(pos));
         }
-        return new View(o, tag);
+        return new View(o, tag, BlockJson.state(state));
     }
 
     private static ToolResult entityInspect(Args a) throws Exception {
         int id = a.reqInt("entity_id");
         boolean nbt = a.bool("include_nbt", true);
         Where<Integer> w = ClientThread.call(() -> new Where<>(Ctx.level().dimension(), Ctx.entity(id).getId()));
-        return ToolResult.json(bothSides(w, l -> entity(l, id, nbt), "entity"));
+        return ToolResult.json(bothSides(w, l -> entity(l, id, nbt), Kind.ENTITY));
     }
 
     private static View entity(Level l, int id, boolean includeNbt) {
@@ -153,7 +159,7 @@ final class InspectTools {
         JsonObject o = new JsonObject();
         if (e == null) {
             o.addProperty("exists", false);
-            return new View(o, null);
+            return new View(o, null, null);
         }
         o.addProperty("type", BuiltInRegistries.ENTITY_TYPE.getKey(e.getType()).toString());
         o.addProperty("class", e.getClass().getName());
@@ -170,7 +176,7 @@ final class InspectTools {
             o.addProperty("nbt_error", ex.toString());
         }
         if (!l.isClientSide() && e instanceof LivingEntity le) o.add("ai", EntityAi.describe(le));
-        return new View(o, tag);
+        return new View(o, tag, null);
     }
 
     private static ToolResult capabilitiesAt(Args a) throws Exception {
@@ -179,11 +185,8 @@ final class InspectTools {
         Direction side = sideArg == null ? null : Direction.byName(sideArg.toLowerCase(java.util.Locale.ROOT));
         if (sideArg != null && side == null) throw new ToolException("Unknown side '" + sideArg + "'.");
         boolean empty = a.bool("include_empty", false);
-        MinecraftServer s = ClientThread.call(IntegratedServer::require);
         ResourceKey<Level> dim = ClientThread.call(() -> Ctx.level().dimension());
-        return ToolResult.json(ClientThread.callServer(s, () -> {
-            ServerLevel l = s.getLevel(dim);
-            if (l == null) throw new ToolException("The server has no level " + Mc.id(dim));
+        return ToolResult.json(IntegratedServer.inLevel(dim, l -> {
             if (!l.isLoaded(pos)) throw new ToolException("That block is not loaded.");
             Platform p = YamcMcp.platform();
             JsonObject o = new JsonObject();
@@ -204,7 +207,7 @@ final class InspectTools {
             o.add("exposed_by_side", sides);
             if (!st.any()) o.addProperty("note", "Nothing exposed from " + (side == null ? "the unsided view" : "this side") + ".");
             return o;
-        }, SERVER_TIMEOUT_MS));
+        }));
     }
 
     private static JsonObject storage(Platform.Storage st, boolean empty, net.minecraft.core.HolderLookup.Provider regs) {
@@ -255,12 +258,11 @@ final class InspectTools {
     }
 
     /** Where the two views differ: the block/entity itself, and the keys of their saved data. */
-    private static JsonObject compare(View client, View server, String what) {
+    private static JsonObject compare(View client, View server, Kind kind) {
         JsonObject o = new JsonObject();
         boolean sameState = true;
-        if (client.json().has("id")) { // a block: compare the block states too
-            sameState = Objects.equals(client.json().get("id"), server.json().get("id"))
-                    && Objects.equals(client.json().get("properties"), server.json().get("properties"));
+        if (kind == Kind.BLOCK) {
+            sameState = Objects.equals(client.state(), server.state());
             o.addProperty("same_state", sameState);
         }
         CompoundTag c = client.tag(), s = server.tag();
@@ -270,7 +272,7 @@ final class InspectTools {
         }
         if (c == null || s == null) {
             o.addProperty("in_sync", false);
-            o.addProperty("note", "The " + what + " exists only on the " + (c == null ? "server" : "client") + ".");
+            o.addProperty("note", "The " + kind.holder + " exists only on the " + (c == null ? "server" : "client") + ".");
             return o;
         }
         Set<String> onlyServer = new TreeSet<>(), onlyClient = new TreeSet<>(), different = new TreeSet<>();

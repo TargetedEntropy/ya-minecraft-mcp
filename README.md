@@ -101,8 +101,9 @@ only, and singleplayer/LAN host only unless enabled for multiplayer (see Config)
 - `gametest_run`: run game tests (`/test`) and wait for per-test pass/fail with errors; `mode=list` lists them.
 - `tick_control`: freeze, step N ticks, sprint, or change the tick rate, waiting until done.
 - `packet_log`: count and list network packets while recording; mod channels show as `custom_payload <id>`.
-- `mod_config`: a mod's NeoForge config values (with defaults, ranges, comments) and setting one; on Fabric, its config files
-  (read-only). Values and files that look like credentials are withheld.
+- `mod_config`: a mod's NeoForge config values (with defaults, ranges, comments) and setting one, plus its own files in the
+  config folder (read-only; on Fabric, which has no shared config system, that is all there is). Values and files that look
+  like credentials are withheld.
 - `keybinds` / `key_press`: every key binding (mods' too) and pressing one by name for N ticks, bound or not.
 - `screen_widgets` / `widget_click`: the open screen's widget tree (class, bounds, label, state, text fields) and clicking a
   widget or filling a text field by index.

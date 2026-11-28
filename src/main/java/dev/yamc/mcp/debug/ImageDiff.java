@@ -1,8 +1,11 @@
 package dev.yamc.mcp.debug;
 
+import com.google.gson.JsonObject;
 import com.mojang.blaze3d.platform.NativeImage;
 import dev.yamc.mcp.YamcMcp;
 import dev.yamc.mcp.mcp.ToolException;
+import dev.yamc.mcp.mcp.ToolResult;
+import dev.yamc.mcp.util.Json;
 import dev.yamc.mcp.util.Mc;
 import org.jetbrains.annotations.Nullable;
 
@@ -10,6 +13,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Base64;
 import java.util.regex.Pattern;
 
 /**
@@ -30,6 +34,37 @@ public final class ImageDiff {
         public double ratio() {
             return (double) differing / ((long) width * height);
         }
+
+        JsonObject json(String baseline) {
+            JsonObject c = new JsonObject();
+            c.addProperty("baseline", baseline);
+            c.addProperty("matches", differing == 0);
+            c.addProperty("differing_pixels", differing);
+            c.addProperty("differing_percent", Json.round(ratio() * 100));
+            c.addProperty("max_channel_delta", maxDelta);
+            if (diffPng != null) c.addProperty("diff_image", "second image: changed pixels in red over a grey copy of this screenshot");
+            return c;
+        }
+    }
+
+    /**
+     * A screenshot's baseline options: save it under a name, compare it with a saved one, or both (compared first, so
+     * the same name compares with the previous image and then replaces it).
+     * @param threshold per-channel difference (0-255) a pixel may have and still match
+     */
+    public record Baseline(@Nullable String save, @Nullable String compare, int threshold) {}
+
+    /**
+     * Applies the baseline options to a finished screenshot ({@code img}, encoded as {@code png}): a comparison adds a
+     * {@code comparison} object to {@code meta} and, if anything differs, the diff image to the result.
+     */
+    public static void apply(Baseline b, NativeImage img, byte[] png, ToolResult result, JsonObject meta) throws IOException {
+        if (b.compare() != null) {
+            Result d = compare(img, b.compare(), b.threshold());
+            meta.add("comparison", d.json(b.compare()));
+            if (d.diffPng() != null) result.image(Base64.getEncoder().encodeToString(d.diffPng()), "image/png");
+        }
+        if (b.save() != null) meta.addProperty("baseline_saved", save(b.save(), png).getFileName().toString());
     }
 
     public static Path file(String name) {

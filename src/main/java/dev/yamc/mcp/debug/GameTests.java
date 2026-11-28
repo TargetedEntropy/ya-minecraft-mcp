@@ -30,7 +30,8 @@ public final class GameTests {
     public static Started start(MinecraftServer server, CommandSourceStack player, String command) {
         GameTestRunner before = GameTestTicker.SINGLETON.runner;
         List<String> output = new ArrayList<>();
-        boolean[] failed = {false};
+        // Set by the command's result callback; a command that does not parse never runs, so it stays null.
+        Boolean[] succeeded = {null};
         CommandSource capture = new CommandSource() {
             @Override
             public void sendSystemMessage(Component message) {
@@ -44,7 +45,6 @@ public final class GameTests {
 
             @Override
             public boolean acceptsFailure() {
-                failed[0] = true;
                 return true;
             }
 
@@ -53,9 +53,10 @@ public final class GameTests {
                 return false;
             }
         };
-        server.getCommands().performPrefixedCommand(Mc.asOwner(player.withSource(capture)), command);
+        CommandSourceStack source = Mc.asOwner(player.withSource(capture)).withCallback((ok, result) -> succeeded[0] = ok);
+        server.getCommands().performPrefixedCommand(source, command);
         GameTestRunner after = GameTestTicker.SINGLETON.runner;
-        return new Started(output, !failed[0], after != before ? after : null);
+        return new Started(output, Boolean.TRUE.equals(succeeded[0]), after != before ? after : null);
     }
 
     /** Whether every test of the runner has finished. Server thread. */

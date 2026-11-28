@@ -84,43 +84,14 @@ final class FabricPlatform implements Platform {
         return FabricStorage.read(level, pos, side);
     }
 
-    // Fabric has no shared config system: show the mod's files under config/ instead.
+    // Fabric has no shared config system: mod_config shows the mod's files under config/ on its own.
     @Override
-    public com.google.gson.JsonArray modConfigs(String modId) {
-        com.google.gson.JsonArray out = new com.google.gson.JsonArray();
-        String id = modId.toLowerCase(java.util.Locale.ROOT);
-        try (var files = Files.walk(configDir(), 2)) {
-            for (Path f : files.filter(Files::isRegularFile).sorted().toList()) {
-                Path rel = configDir().relativize(f);
-                String name = rel.toString().toLowerCase(java.util.Locale.ROOT);
-                if (!name.startsWith(id)) continue;
-                com.google.gson.JsonObject o = new com.google.gson.JsonObject();
-                o.addProperty("file", rel.toString().replace('\\', '/'));
-                if (mayHoldCredentials(name)) {
-                    o.addProperty("note", "Not shown: may hold credentials.");
-                    out.add(o);
-                    continue;
-                }
-                long size = Files.size(f);
-                o.addProperty("size", size);
-                if (size <= 32_768) o.addProperty("text", Files.readString(f));
-                else o.addProperty("note", "Too large to show.");
-                out.add(o);
-            }
-        } catch (java.io.IOException e) {
-            throw new dev.yamc.mcp.mcp.ToolException("Cannot list the config folder: " + e.getMessage());
-        }
-        return out;
-    }
-
-    // Tokens, passwords and keys (this mod's own token and connect files included) stay out of the AI's context.
-    private static boolean mayHoldCredentials(String name) {
-        return name.startsWith("yamcmcp-") || java.util.List.of("token", "secret", "password", "credential", "apikey", "api_key", ".key")
-                .stream().anyMatch(name::contains);
+    public List<ConfigSpec> modConfigs(String modId) {
+        return List.of();
     }
 
     @Override
-    public com.google.gson.JsonElement setModConfig(String modId, String path, com.google.gson.JsonElement value) {
+    public Object setModConfig(String modId, String path, Object value) {
         throw new dev.yamc.mcp.mcp.ToolException("Fabric has no shared config system, so values cannot be set here: edit the mod's file under "
                 + "config/ (shown by mod_config) and restart, or use the mod's own reload command if it has one.");
     }

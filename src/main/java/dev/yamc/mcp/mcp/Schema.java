@@ -53,6 +53,11 @@ public final class Schema {
         return this;
     }
 
+    /** An optional string that takes one of an enum's constants, written in lower case (see {@link Args#choice}). */
+    public <E extends Enum<E>> Schema choice(String name, String desc, Class<E> type) {
+        return enumStr(name, desc, false, Args.choices(type).toArray(String[]::new));
+    }
+
     public Schema strArray(String name, String desc) {
         JsonObject p = new JsonObject();
         p.addProperty("type", "array");

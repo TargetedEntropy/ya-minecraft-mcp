@@ -14,6 +14,7 @@ import net.minecraft.world.level.block.entity.TickingBlockEntity;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 /** Performance numbers for the perf tool: the client's frame rate and memory, the integrated server's tick cost and load. */
 public final class Perf {
@@ -22,9 +23,9 @@ public final class Perf {
     public static JsonObject snapshot(int top) throws Exception {
         JsonObject o = new JsonObject();
         o.add("client", ClientThread.call(() -> client(top)));
-        MinecraftServer s = ClientThread.call(IntegratedServer::get);
-        if (s == null) o.addProperty("server", "unavailable: only in singleplayer / LAN host");
-        else o.add("server", ClientThread.callServer(s, () -> server(s, top), 10_000));
+        Optional<JsonObject> server = IntegratedServer.callIfPresent(s -> server(s, top));
+        if (server.isEmpty()) o.addProperty("server", "unavailable: only in singleplayer / LAN host");
+        else o.add("server", server.get());
         return o;
     }
 

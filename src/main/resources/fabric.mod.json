@@ -26,5 +26,8 @@
     "fabric-command-api-v2": "*",
     "fabric-recipe-api-v1": "*",
     "java": ">=${javamin}"
+  },
+  "suggests": {
+    "fabric-transfer-api-v1": "*"
   }
 }

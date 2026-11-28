@@ -53,6 +53,8 @@ public final class ClientEvents {
 
     public static void loggingIn() {
         WATCHER.loggingIn();
+        var c = net.minecraft.client.Minecraft.getInstance().getConnection();
+        if (c != null) dev.yamc.mcp.debug.PacketLog.connected(c.getConnection());
     }
 
     public static void loggingOut() {

@@ -115,6 +115,25 @@ check exceptions '{}' distinct
 check asset_audit '{"namespace":"minecraft","limit":5}' entries_with_problems
 check block_inspect '{}' in_sync
 check reload '{"what":"all"}' duration_ms
+# text of a tool result, evaluated with python: t is the parsed JSON
+pj() { python3 -c 'import sys,json; t=json.loads(json.load(sys.stdin)["result"]["content"][0]["text"]); print(eval(sys.argv[1]))' "$1"; }
+read -r PX PY PZ < <(call block_inspect '{}' | pj '"%d %d %d" % (t["client"]["pos"]["x"], t["client"]["pos"]["y"], t["client"]["pos"]["z"])')
+call run_command "{\"command\":\"setblock $((PX + 2)) $PY $PZ minecraft:hopper\"}" >/dev/null
+call run_command "{\"command\":\"summon minecraft:pig $((PX - 2)) $PY $PZ\"}" >/dev/null
+sleep 2
+check capabilities_at "{\"x\":$((PX + 2)),\"y\":$PY,\"z\":$PZ}" slot_count
+EID=$(call nearby_entities '{"type":"minecraft:pig","radius":16}' | pj 't["items"][0]["entity_id"]')
+check entity_inspect "{\"entity_id\":${EID:-0}}" goals
+check tick_control '{"action":"freeze"}' '"frozen\\":true'
+check tick_control '{"action":"step","ticks":5}' stepped
+check tick_control '{"action":"unfreeze"}' '"frozen\\":false'
+check gametest_run '{"mode":"list"}' count
+check packet_log '{"action":"start"}' active
+check look_at '{"yaw":90,"pitch":0}'
+sleep 1
+check packet_log '{"action":"status"}' by_type
+check packet_log '{"action":"stop"}' active
+check mod_config '{"mod_id":"yamcmcp"}' configs
 
 echo "$NODE: $FAIL failed"
 [ "$FAIL" = 0 ]

@@ -73,7 +73,7 @@ and movement or mining tools can't run.
 
 Every response reports a `source` (`static`, `synced`, `integrated_server`, `client`).
 
-## Tools (58)
+## Tools (64)
 
 **Player:** `player_status`, `player_inventory`
 **World:** `world_info`, `look_target`, `block_at`, `blocks_at`, `scan_area`, `find_blocks`, `nearby_entities`, `entity_info`, `players_online`, `open_container`, `hud`
@@ -94,6 +94,15 @@ only, and singleplayer/LAN host only unless enabled for multiplayer (see Config)
   textures and (singleplayer) loot tables.
 - `block_inspect`: a block on the client and on the integrated server side by side, with the block entity NBT keys that differ
   (data that is not synced), scheduled ticks and redstone power.
+- `entity_inspect`: the same for an entity, plus its AI on the server: goals, target, path, brain (activities, behaviors,
+  memories) and attributes with modifiers.
+- `capabilities_at`: the item, fluid and energy storage a block exposes (NeoForge capabilities, Fabric Transfer API and Team
+  Reborn Energy), per slot and tank, and which kinds each side exposes.
+- `gametest_run`: run game tests (`/test`) and wait for per-test pass/fail with errors; `mode=list` lists them.
+- `tick_control`: freeze, step N ticks, sprint, or change the tick rate, waiting until done.
+- `packet_log`: count and list network packets while recording; mod channels show as `custom_payload <id>`.
+- `mod_config`: a mod's NeoForge config values (with defaults, ranges, comments) and setting one; on Fabric, its config files
+  (read-only). Values and files that look like credentials are withheld.
 
 **Actions:** `send_chat`, `run_command`, `look_at`, `select_slot`, `interact`, `mine_block`, `move`, `container_click`, `open_inventory`, `close_screen`, `highlight`, `clear_highlights`, `notify_player`
 

@@ -417,6 +417,16 @@ public final class Mc {
         return img.asByteArray();
     }
 
+    // ------------------------------------------------------------------ commands
+
+    /** The source with full (owner) permission, for commands the mod runs itself in singleplayer. */
+    public static net.minecraft.commands.CommandSourceStack asOwner(net.minecraft.commands.CommandSourceStack s) {
+        //? if >=1.21.11 {
+        /*return s.withPermission(net.minecraft.server.permissions.LevelBasedPermissionSet.OWNER);
+        *///?} else
+        return s.withPermission(4);
+    }
+
     // ------------------------------------------------------------------ NBT
 
     /** The keys of a compound tag (getAllKeys() was renamed keySet() in 1.21.5). */

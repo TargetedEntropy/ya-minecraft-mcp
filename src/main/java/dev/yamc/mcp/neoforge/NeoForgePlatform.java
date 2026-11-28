@@ -74,5 +74,20 @@ final class NeoForgePlatform implements Platform {
         var custom = ing.getCustomIngredient();
         return new CustomIngredient(String.valueOf(NeoForgeRegistries.INGREDIENT_TYPES.getKey(custom.getType())), custom.hashCode());
     }
+
+    @Override
+    public Storage storage(net.minecraft.server.level.ServerLevel level, net.minecraft.core.BlockPos pos, @Nullable net.minecraft.core.Direction side) {
+        return NeoForgeStorage.read(level, pos, side);
+    }
+
+    @Override
+    public com.google.gson.JsonArray modConfigs(String modId) {
+        return NeoForgeModConfigs.read(modId);
+    }
+
+    @Override
+    public com.google.gson.JsonElement setModConfig(String modId, String path, com.google.gson.JsonElement value) {
+        return NeoForgeModConfigs.set(modId, path, value);
+    }
 }
 //?}

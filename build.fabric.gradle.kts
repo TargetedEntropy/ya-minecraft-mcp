@@ -21,6 +21,8 @@ dependencies {
     fapi(
         "fabric-api-base", "fabric-lifecycle-events-v1", "fabric-message-api-v1", "fabric-networking-api-v1",
         "fabric-rendering-v1", "fabric-command-api-v2", "fabric-recipe-api-v1",
+        // Optional at runtime (capabilities_at checks it is loaded): block item/fluid storages.
+        "fabric-transfer-api-v1", "fabric-api-lookup-api-v1",
     )
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
